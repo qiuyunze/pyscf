@@ -30,22 +30,22 @@ class PM6MOLE:
         self.Z = Z
         self.coord = coord
         self.numat = int(Z.size)
-        # 设置电子数与自旋
+        #  electron number
         self.nelecs = sum([self.PM6env.tore[z-1] for z in Z]) - int(self.charge)
         self.nalpha, self.nbeta, self.rhf = self._nelecs_to_nalpha_nbeta()
         self.nclose = self.nelecs // 2 if self.rhf else 0
         self.nopen  = (self.nelecs - 2*self.nclose) if self.rhf else 0
-        # 设置轨道数
+        # orbital number
         self.natorb = np.array([self._natorb_for_Z(int(z)) for z in Z], dtype=int)
         self.nfirst, self.nlast, self.norbs = self._nfirst_nlast_norbs()
         self.mpack = self.norbs * (self.norbs + 1) // 2
-        # 设置 AO 对角项
+        # diagnol term
         self.uspd = self._uspd_init()
-        # 初始 AO 占据
+        # initial guess
         self.pdiag = self._pdiag_init()
-        # 估算双电子积分项个数
+        # 2-electron integrals guess number
         self.n2elec = self._n2elec_guess()
-        # 初始化计算所需数组
+        # required arrays
         npulay = 3
         if id_dim == 0:
             l123 = 1  # QYZ: 1 for molecular calculations
@@ -57,7 +57,9 @@ class PM6MOLE:
         self.grad = np.zeros(self.numat *3, dtype=np.float64)
         # one-electron integrals and density matrix
         self.h = zeros_vec_mpack.copy()
+        # self.hfull = zeros_mat_nn.copy()  
         self.p = zeros_vec_mpack.copy()
+        # self.pfull = zeros_mat_nn.copy()
         self.pa = zeros_vec_mpack.copy()
         self.pb = zeros_vec_mpack.copy()
         # pulay history
@@ -66,7 +68,9 @@ class PM6MOLE:
         self.pold3 = np.zeros(max(self.mpack, 400), dtype=np.float64)
         # Fock matrix
         self.f = zeros_vec_mpack.copy()
+        # self.ffull = zeros_mat_nn.copy()
         self.c = zeros_mat_nn.copy()
+        self.M = zeros_mat_nn.copy()    # which would be used in the SCF loop
         self.eigs = np.zeros(self.norbs, dtype=np.float64)
         self.eigb = np.zeros(self.norbs, dtype=np.float64)
         # two-electron integrals
@@ -144,7 +148,7 @@ class PM6MOLE:
         udd6 = self.PM6env.udd6
         for i in range(self.numat):
             a, b = int(self.nfirst[i]), int(self.nlast[i])
-            if b < a:    # 无 AO
+            if b < a:    # without AO
                 continue
             zi = int(self.Z[i]) - 1
             n_orb = b - a + 1
@@ -158,13 +162,15 @@ class PM6MOLE:
                 uspd[a+1:a+4] = upp6[zi]
                 uspd[a+4:a+9] = udd6[zi]
             else:
-                raise RuntimeError("意外的 AO 数（应为 1/4/9）")
+                raise RuntimeError(f"Incorrect number of orbitals for atom, which should be 1/4/9, but got {n_orb}")
         return uspd
 
     def _pdiag_init(self) -> np.ndarray:
+        '''
+        Initialize the pdiag vector; important for smooth SCF convergence
+        '''
         pdiag = np.zeros(self.norbs, dtype=int)
-
-        # 平均电荷修正
+        
         charge = self.charge
         nfirst, nlast, norbs = self.nfirst, self.nlast, self.norbs
         yy = float(charge) / (self.norbs + 1e-10)
@@ -174,7 +180,6 @@ class PM6MOLE:
         for i in range(self.numat):
             if nlast[i] - nfirst[i] == -1:
                 continue
-            # 假设 nfirst/nlast 仍为 Fortran 1-base，需要转 0-base：
             l0 = int(nfirst[i]) 
             b  = int(nlast[i])  
             n_orb = b - l0 + 1
@@ -191,43 +196,36 @@ class PM6MOLE:
                 pdiag[l0:l0+4] = w
 
             else:
-                # 带 d 壳层的两种情况
+                # d shell
                 if (zi < 21) or (30 < zi < 39) or (48 < zi < 57):
-                    # 主族：d 形式空
                     w = 0.25 * te - yy
                     pdiag[l0:l0+4] = w            # s+p
-                    pdiag[l0+4:l0+9] = -yy         # 5 个 d 轨道
+                    pdiag[l0+4:l0+9] = -yy         # 5 d orbitals
                 elif zi < 99:
-                    # 过渡金属：sum 先减 9*yy，再逐步分配并 clip
                     sum_e = te - 9.0 * yy
 
-                    # s: 1 个
                     s_occ = max(0.0, min(sum_e, 2.0))
                     pdiag[l0] = s_occ
                     sum_e -= s_occ
 
                     if sum_e > 0.0:
-                        # d: 5 个，每个先按 0.2*sum_e 再 clip
                         d_vals = []
                         for _ in range(5):
                             occ = max(0.0, min(0.2 * sum_e, 2.0))
                             d_vals.append(occ)
                         d_vals = np.array(d_vals)
                         pdiag[l0+4:l0+9] = d_vals
-                        sum_e -= 10.0  # d 满占时相当于扣 10；若未满，这里与 Fortran 的“sum -= 10”保持一致
+                        sum_e -= 10.0  
 
-                        # p: 如 sum_e 仍正，三等分
                         if sum_e > 0.0:
                             p_occ = sum_e / 3.0
                             pdiag[l0+1:l0+4] = p_occ
                         else:
                             pdiag[l0+1:l0+4] = 0.0
                     else:
-                        # 没有多余电子，d/p 都为 0
                         pdiag[l0+1:l0+4] = 0.0
                         pdiag[l0+4:l0+9] = 0.0
                 else:
-                    # 其他（安全兜底）：全置 0（或按需要处理）
                     pdiag[l0:l0+n_orb] = 0.0
         return pdiag
     
@@ -236,12 +234,12 @@ class PM6MOLE:
         has4 = int(np.sum(self.natorb == 4))
         has9 = int(np.sum(self.natorb == 9))
         ispd = int(has9)
-        if self.id_dim == 0:   # 分子
+        if self.id_dim == 0:   # molecule
             n2 = (has4*(has4 - 1))//2
             n2 = 100*n2 + 2025*has9 + 100*has4 + has1 \
                 + 2025*((has9*(has9 - 1))//2) + 450*has9*has4 + 45*has9*has1 \
                 + 10*has4*has1 + (has1*(has1 - 1))//2 + 10
-        else:              # 周期体系（更“宽松”的取整）
+        else:         # periodic system    
             n2 = (has4*(has4 + 1))//2
             n2 = 100*n2 + 2025*has9 + 100*has4 + has1 \
                 + 2025*((has9*(has9 + 1))//2) + 450*has9*has4 + 45*has9*has1 \
@@ -254,23 +252,22 @@ class PM6MOLE:
         norbs  = self.norbs
         mpack  = self.mpack
 
-        nfirst = np.asarray(self.nfirst, dtype=int)   # 0-basis  AO 起点
-        nlast  = np.asarray(self.nlast,  dtype=int)   # 0-basis  AO 终点（闭区间）
-        nat    = np.asarray(self.Z,    dtype=int)   # 0-basis  元素索引
-        uspd   = np.asarray(self.uspd,   dtype=float) # 一电子对角
-        coord  = np.asarray(self.coord,  dtype=float) # Å
+        nfirst = np.asarray(self.nfirst, dtype=int)  
+        nlast  = np.asarray(self.nlast,  dtype=int)   
+        nat    = np.asarray(self.Z,    dtype=int)   
+        uspd   = np.asarray(self.uspd,   dtype=float) 
+        coord  = np.asarray(self.coord,  dtype=float) 
 
-        h = self.h   # packed 下三角，长度 = mpack
-        w = self.w   # 二电子缓冲区
+        h = self.h   # packed one-electron integrals, length = mpack
+        w = self.w   # two-electron integrals 
         iw = sys.stdout
-        # ---- 初始化 ----
-        # h[:] = 0.0
+        # ---- initialize the h matrix ----
         enuclr = 0.0
-        kr = 0  # w 的已用长度（0-basis，从 0 写起）
+        kr = 0  # current position in the w matrix
         def _add_packed_block(h, ia, ib, eblk, scale=1.0):
             """
-            将打包的下三角块 eblk（长度 (L*(L+1))//2, L=ib-ia+1）加到 h 的大打包矩阵中。
-            把 eblk 的第 r 行（局部）加到全局行 p=ia+r 的列区间 [ia, ia+r]。
+                Add the packed block eblk (length L*(L+1)//2) to the h matrix.
+                The block is added to the global row p=ia+r in the column interval [ia, ia+r].
             """
             L = ib - ia + 1
             if L <= 0:
@@ -279,28 +276,29 @@ class PM6MOLE:
             for p in range(ia, ib + 1):
                 n = p - ia + 1
                 row_vals = eblk[off:off + n]
-                # 写到全局 h 的 (p, ia..p)
+                # add the row_vals to the global h matrix
                 base = _pack_index(p, ia)
                 h[base: base + n] += scale * row_vals
                 off += n
 
-        # ====== 主循环（逐原子） ======
+        # ====== Atom Pair Loop ======
+        ### For each atom pair, the number of two-electron integrals is less than.
         for i in range(numat):
             ia = int(nfirst[i])
             ib = int(nlast[i])
-            ni = int(nat[i])                 # 原子序数
+            ni = int(nat[i])                
 
-            # 1) 同原子块：先把同原子非对角清零（h 已整体置 0，可省），再写对角 = uspd
+            # 1) fill the diagonal of the matrix one-electron integrals with the uspd values
             for p in range(ia, ib + 1):
                 h[_pack_index(p, p)] = float(uspd[p])
 
-            # 2) 与之前原子 j 的一电子交互 + 二电子表/核-核
+            # 2) off-diagonal matrix one-electron integrals and two-electron integrals
             for j in range(0, i):
                 ja = int(nfirst[j]); jb = int(nlast[j]); nj = int(nat[j])
 
-                # 2a) 一电子块 H_ij（只加到下三角允许的位置）
-                di = np.asarray(h1elec(ni, nj, coord[:, i], coord[:, j], env=PM6env), dtype=float)   # 此处传入原子序数，内部转化为0-based
-                # di 形状 = ((ib-ia+1),(jb-ja+1))
+                # 2a) fill the off-diagonal of the matrix one-electron integrals with the h1elec values
+                di = np.asarray(h1elec(ni, nj, coord[:, i], coord[:, j], env=PM6env), dtype=float)   # Note: atomic number is the input, not 0-based
+                # di's shape : ((ib-ia+1),(jb-ja+1))
                 for p in range(ia, ib + 1):
                     row = p - ia
                     max_col = min(p, jb)
@@ -309,25 +307,26 @@ class PM6MOLE:
                         n = max_col - ja + 1
                         h[base: base + n] += di[row, :n]
         
-                # 2b) 两电子积分 & 核-核排斥 & 电子-核吸引项（旋转到全局并直接返回 e1b/e2a）
+                # 2b) get the two-electron integrals & nuclear repulsion energy from the rotate function
                 kr_new, e1b, e2a, enuc_add = rotate(ni, nj, coord[:, i], coord[:, j], w, kr, PM6env)
                 kr = int(kr_new)
                 enuclr += float(enuc_add)
 
-                # 2c) 把 e1b 加到 i-块，把 e2a 加到 j-块（两者都是打包下三角向量）
+                # 2c) add the e1b to the global h matrix
                 _add_packed_block(h, ia, ib, np.asarray(e1b, dtype=float), scale=1.0)
+                # 2d) add the e2a to the global h matrix
                 _add_packed_block(h, ja, jb, np.asarray(e2a, dtype=float), scale=1.0)
 
-            # 3) 一中心两电子：wstore（可选）
+            # 3) one-center two-electron integrals
             L = ib - ia + 1
             ilim = (L * (L + 1)) // 2
             if wstore is not None and ilim > 0:
                 kr = int(wstore(w, kr, ni, ilim, PM6env))
         if kr > 0:
             self.w = w[:kr]
-        ### 双电子积分格式是每对原子2025个积分
-        # 写回  
-        self.enuc = float(enuclr)   # hcore 核-核排斥项（eV）   
+        
+  
+        self.enuc = float(enuclr)   # hcore core-core repulsion（eV）   
         self.kr     = int(kr)
         if debug:
             # print_title(iw, "ONE-ELECTRON MATRIX FROM HCORE", leading_blank_lines=2, trailing_blank_lines=1)
@@ -336,29 +335,22 @@ class PM6MOLE:
             vecprt_w(iw, self.w, "TWO-ELECTRON MATRIX IN HCORE")
 
     def _interface_to_pyscf(self):
-        # === PySCF 期望的最小接口 ===
-        self._built = True                 # PySCF 用于判断是否已 build()
+        # === minimum PySCF interface ===
+        self._built = True                 # used in pyscf/scf/hf.py
         self.max_memory = 2000
-        self.stdout = sys.stdout           # 日志输出
-        self.nao = int(self.norbs)         # #AO
-        self.norb = self.nao               # 方便起见
-        self.nelectron = int(self.nelecs)  # 总电子数
-        self.nelec = (int(self.nalpha), int(self.nbeta))  # (nα, nβ)
-        self.spin = int(self.nalpha - self.nbeta)         # RHF 应为 0
-        self.charge = int(self.charge)     # 已有，但显式化一下更清晰
+        self.stdout = sys.stdout           
+        self.nao = int(self.norbs)         # AO
+        self.norb = self.nao               
+        self.nelectron = int(self.nelecs)  
+        self.nelec = (int(self.nalpha), int(self.nbeta))  
+        self.spin = int(self.nalpha - self.nbeta)        
+        self.charge = int(self.charge)     
 
-        def build(*args, **kwargs):        # 让 PySCF 调用 mol.build() 时不出错
+        def build(*args, **kwargs):        # PySCF call mol.build() 
             self._built = True
             return self
         self.build = build
 
-        # 若 _hcore() 内已计算并存过核排斥能，请在那时设置 self.enuc；
-        # 这里提供 PySCF 期望的 energy_nuc() 接口。
-        # def energy_nuc():
-        #     return float(getattr(self, "enuc", 0.0))
-        # self.energy_nuc = energy_nuc
-
-        # 某些路径会掉这个方法；给一个别名更保险
         def nao_nr():
             return self.nao
         self.nao_nr = nao_nr

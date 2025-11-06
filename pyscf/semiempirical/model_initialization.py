@@ -3,30 +3,25 @@ from typing import Optional, Union, Mapping
 
 class PM6Init:
     """
-    封装 MOPAC/PM6 相关的参数加载与表格/索引初始化。
-    你在脚本顶层定义的所有数组、表和 fordd() 生成的索引，这里都会作为实例属性提供。
-    
-    使用:
+    Usage:
         env = PM6Init("pm6_params.npz")
-        # 或者:
         env = PM6Init(pm6_loader.load("pm6_params.npz"))
     """
 
     # ---------------------------
-    # 构造 & 参数加载
+    # load parameters
     # ---------------------------
     def __init__(self, source: Optional[Union[str, Mapping]] = "pm6_params.npz") -> None:
         """
         Parameters
         ----------
         source : str 或 dict-like
-            - 如果是字符串，视作 .npz 路径，用 np.load 读。
-            - 如果是 dict-like（例如 pm6_loader.load 返回值），按键取值。
-            - 默认 "pm6_params.npz"
+            - string: .npz path
+            - dict-like: extract directly
+            - default "pm6_params.npz"
         """
         params = self._load_params(source)
 
-        # === 逐项提取（保持你原脚本里的键名） ===
         self.uss6   = params["uss6"]
         self.upp6   = params["upp6"]
         self.udd6   = params["udd6"]
@@ -42,7 +37,6 @@ class PM6Init:
         self.gp26   = params["gp26"]
         self.hsp6   = params["hsp6"]
 
-        # 与哈密顿/能量无直接关系或仅少数元素用到
         self.polvo6  = params["polvo6"]
         self.pocord6 = params["poc_6"]
         self.zsn6    = params["zsn6"]
@@ -52,14 +46,14 @@ class PM6Init:
         self.g2sd6   = params["g2sd6"]
         self.alp6    = params["alp6"]
 
-        # CPE 参数（仅少数元素存在）
+        # CPE parameters
         self.CPE_Zet6 = params["CPE_Zet6"]
         self.CPE_Z06  = params["CPE_Z06"]
         self.CPE_B6   = params["CPE_B6"]
         self.CPE_Xlo6 = params["CPE_Xlo6"]
         self.CPE_Xhi6 = params["CPE_Xhi6"]
 
-        # 其它
+        # others 
         self.v_par6 = params["v_par6"]
         self.gues61 = params["gues61"]
         self.gues62 = params["gues62"]
@@ -67,12 +61,8 @@ class PM6Init:
         self.alpb   = params["alpb"]
         self.xfac   = params["xfac"]
 
-        # 单位换算常量
         self.Ha2eV = 27.211386245988
 
-        # ---------------------------
-        # 下面是你脚本里的“常量表/组合表/索引表”的初始化
-        # ---------------------------
         self.fx = np.empty(30, dtype=float)
         self.fx[0] = 1.0
         for i in range(1, 30):
@@ -83,7 +73,7 @@ class PM6Init:
         for i in range(1, 30):
             self.b[i, 1:i+1] = self.b[i-1, :i] + self.b[i-1, 1:i+1]
 
-        # principal number 的“可用范围表”
+        # principal number 
         self.iii  = np.array([1]*2 + [2]*8 + [3]*8 + [4]*18 + [5]*18 + [6]*32 + [0]*21,
                              dtype=int)
         self.iiid = np.array([3]*30 + [4]*18 + [5]*32 + [6]*6  + [0]*21,
@@ -95,7 +85,7 @@ class PM6Init:
         self.f2dd  = np.zeros(107)
         self.f4dd  = np.zeros(107)
         self.f0sd  = np.zeros(107)
-        self.g2sd_ = np.zeros(107)  # 避免与上面的 g2sd6 重名，取 g2sd_ 表示“占位表”
+        self.g2sd_ = np.zeros(107)  
         self.f0pd  = np.zeros(107)
         self.f2pd  = np.zeros(107)
         self.g1pd  = np.zeros(107)
@@ -105,17 +95,17 @@ class PM6Init:
         self.ddp = np.zeros((6, 107))
         self.po  = np.zeros((9, 107))
 
-        # am/ad/aq/dd/qq 在 calpar 中会更新，这里按原始脚本初始化为 0
+        # am/ad/aq/dd/qq will be updated in calpar
         self.am = np.zeros(107)
         self.ad = np.zeros(107)
         self.aq = np.zeros(107)
         self.dd = np.zeros(107)
         self.qq = np.zeros(107)
 
-        # 元素是否带 d 轨道：iiid>0 且 该元素 zd6>0
+        # determine whether contain d orbitals: iiid>0  zd6>0
         self.dorbs = (self.iiid > 0) & (self.zd6 > 1e-8)
 
-        # =============== 电子占据数（ios/iop/iod）================
+        # =============== electron occupation（ios/iop/iod）================
         def rep(n, v): return [v]*n
 
         ios = []
@@ -159,7 +149,7 @@ class PM6Init:
 
         self.tore = self.ios + self.iop + self.iod
 
-        # =============== npq（s/p/d 主量子数）================
+        # =============== npq（s/p/d principal number）================
         # s:
         npq_s = []
         npq_s += [1, 1]
@@ -195,33 +185,31 @@ class PM6Init:
 
         self.npq = np.stack((npq_s, npq_p, npq_d), axis=-1)
 
-        # AO 个数：默认 4（s+p），对需要 d 的元素给 9
         self.natorb = np.zeros(107, dtype=np.int32)
         self.natorb[self.dorbs] = 9
         mask_p = (~self.dorbs) & (self.zp6 > 1.0e-20)
         self.natorb[mask_p] = 4
         mask_s = (self.natorb == 0) & (self.zs6 > 1.0e-20)
         self.natorb[mask_s] = 1
-        # d 电子数 for TM blocks（与 Fortran 参数一致）
+        # d electron number for TM blocks
         self.ndelec = np.array(
-            self._rep(20, 0) +
+            rep(20, 0) +
             [0, 0, 2, 2, 4, 4, 6, 8, 10, 10] +
-            self._rep(8, 0) +
+            rep(8, 0) +
             [0, 0, 2, 2, 4, 4, 6, 8, 10, 10] +
-            self._rep(22, 0) +
+            rep(22, 0) +
             [0, 0, 2, 2, 4, 4, 6, 8, 10, 10] +
-            self._rep(27, 0),
+            rep(27, 0),
             dtype=int
         )
-
-        # 主族标记
+        
         self.main_group = np.array(
             [True]*2 +                    # H–He
             [True]*8 +                    # Li–Ne
             [True]*8 +                    # Na–Ar
-            [True]*2 + [False]*9 + [True]*7 +   # K–Kr  (Zn 视为主族)
-            [True]*2 + [False]*9 + [True]*7 +   # Rb–Xe (Cd 视为主族)
-            [True]*2 + [False]*23 + [True]*7 +  # Cs–Rn (含镧系+过渡金属)
+            [True]*2 + [False]*9 + [True]*7 +   # K–Kr  
+            [True]*2 + [False]*9 + [True]*7 +   # Rb–Xe 
+            [True]*2 + [False]*23 + [True]*7 +  # Cs–Rn 
             [True]*21,
             dtype=bool
         )
@@ -276,23 +264,23 @@ class PM6Init:
             47, 27, 34, 33, 3, 46, 34, 27, 33, 35, 35, 35, 52, 11, 32, 50, 37, 44,
             14, 39, 22, 48, 11, 32, 49, 37, 44, 1, 6, 6, 7, 51, 38, 22, 31, 38, 29
         ], dtype=np.int32) 
-        # fordd()：生成所有索引表/变换表 
+        # fordd(): index table; Keep consistent in 0-basis
         (self.indx, self.indexd,
          self.ch, self.ind2, self.isym,
          self.inddd, self.inddp, self.indpp) = self._fordd()
-        # 都转化为0-basis
+        # 0-basis
         self.indexd = self.indexd - 1
         self.ind2 = self.ind2 - 1  
         self.indx = self.indx - 1 
         self.inddd, self.inddp, self.indpp = self.inddd - 1, self.inddp - 1, self.indpp - 1
-        # 原子焓
+        # atomic heat
         self.eheat = self._build_eheat()
         self.eheat_sparkles = self._build_eheat()
-        # 两中心一电子块的距离平方截断
-        self.cutofs = 15.0**2   ##  cutof 
-
+        # 2-center 1-electron integral cutoff
+        self.cutofs = 15.0**2   
+        # self.ww = np.zeros(2025, dtype=float)
     # ---------------------------
-    # helper: 加载参数
+    # helper: load parameters
     # ---------------------------
     @staticmethod
     def _load_params(source: Optional[Union[str, Mapping]]) -> Mapping:
@@ -300,35 +288,23 @@ class PM6Init:
             source = "pm6_params.npz"
         if isinstance(source, str):
             return np.load(source)
-        # 假定是 dict-like（np.load 返回值或 pm6_loader.load 返回值）
         return source
 
     @staticmethod
-    def _rep(n: int, v):
-        return [v]*n
-
-    @staticmethod
     def _idx_H_like():
-        """
-        你原脚本只把第一个元素位置设为 1 轨道（1s）。
-        如果你的元素表是 0-based（第 0 位代表 Z=1 的 H），那就返回 [0]。
-        """
         return [0]
 
-    # ---------------------------
-    # fordd(): 构建索引表/变换表
-    # ---------------------------
     def _fordd(self):
         """
-        对应你脚本里的 fordd()，完全 0-basis 化。
-        返回：
+        0-based fordd()
+        return:
           indx, indexd, ch, ind2, isym, inddd, inddp, indpp
         """
         indx   = np.zeros((9,9), dtype=np.int32)
         indexd = np.zeros((9,9), dtype=np.int32)
         ch     = np.zeros((45,3,5), dtype=np.float64)  # ch[i-1, l(0..2), m+2]
         ind2   = np.zeros((45,45), dtype=np.int32)
-        isym   = np.zeros(492, dtype=np.int32)         # 用 1-based 暂存，最后切片 1:
+        isym   = np.zeros(492, dtype=np.int32)        
         inddd  = np.zeros((5,5), dtype=np.int32)
         inddp  = np.zeros((5,3), dtype=np.int32)
         indpp  = np.zeros((3,3), dtype=np.int32)
@@ -337,7 +313,7 @@ class PM6Init:
         def set1(a, i, v):    a[i] = v
         def set_ch(i, l, m, v): ch[i-1, l, m+2] = v
 
-        # --- indx / indexd（对称） ---
+        # --- indx / indexd ---
         for i in range(1, 10):      # 1..9
             for j in range(1, i+1): # 1..i
                 val_indexd = (-(j*(j-1))//2) + i + 9*(j-1)   
@@ -345,9 +321,7 @@ class PM6Init:
                 set2(indexd, i, j, val_indexd); set2(indexd, j, i, val_indexd)
                 set2(indx,   i, j, val_indx);   set2(indx,   j, i, val_indx)
 
-        # --- ind2 赋值（与你脚本一致） ---
-        # 下面直接粘贴你脚本 fordd() 的 ind2 / isym / ch / indpp / inddp / inddd 的赋值
-        # —— ind2 大表 ——（此处内容较长，完全照搬）
+        # --- ind2 ---
         def IND2():
             s2 = set2
             # SP-SP
@@ -466,7 +440,7 @@ class PM6Init:
             s2(ind2,45,28,488);s2(ind2,45,40,489);s2(ind2,45,43,490);s2(ind2,45,45,491)
         IND2()
 
-        # --- isym 表赋值（同你的脚本） ---
+        # --- isym  ---
         def ISYM():
             s1 = set1
             s1(isym, 40, 38); s1(isym, 41, 39); s1(isym, 43, 42)
@@ -538,7 +512,7 @@ class PM6Init:
             s1(isym,489,411); s1(isym,490,415); s1(isym,491,414)
         ISYM()
 
-        # --- ch 赋值（同你的脚本） ---
+        # --- ch  ---
         def CH():
             sc = set_ch
             sc(1,0,0, 1.0)
@@ -603,8 +577,8 @@ class PM6Init:
         INDPP_INDDP_INDDD()
 
         return indx, indexd, ch, ind2, isym[1:], inddd, inddp, indpp
+    
     def _build_eheat(self) -> np.ndarray:
-        """返回 shape=(107,) 的 eheat（Fortran 的 eheat(1..107) → Python 的 [0..106]）。"""
         eheat = np.zeros(107, dtype=np.float64)
         # Fortran: data eheat(n) / value /
         data_pairs = {
@@ -633,7 +607,6 @@ class PM6Init:
         return eheat
 
     def _build_eheat_sparkles(self) -> np.ndarray:
-        """返回 shape=(107,) 的 eheat_sparkles；仅 57..71（La..Lu 的 +3 “sparkles”）有值，其余为 0。"""
         e = np.zeros(107, dtype=np.float64)
         data_pairs = {
             57:  928.90, 58:  944.70, 59:  952.90, 60:  962.80, 61:  976.90,
@@ -643,10 +616,3 @@ class PM6Init:
         for n, val in data_pairs.items():
             e[n-1] = val
         return e
-    # ---------------------------
-    # 便捷显示
-    # ---------------------------
-    def __repr__(self) -> str:
-        return (f"<PM6Init: params(uss6,zs6,...) loaded; "
-                f"tables: fx(30), b(30x30), npq(107x3), natorb(107); "
-                f"fordd: indx/indexd/ch/ind2/isym/...; cutofs={self.cutofs:.1f}>")

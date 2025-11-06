@@ -46,8 +46,7 @@ def aintgs_np(x: float, k: int) -> np.ndarray:
 
 def bintgs_np(x: float, k: int) -> np.ndarray:
     """
-    Fortran 的 BINTGS 完整翻译（包含分段近似/级数展开/极限 x->0）。
-    返回长度为 k+1 的 0-based 数组，满足 b(i+1) ↔ b[i]。
+    return  0-based array (k+11), satisfying b(i+1) ↔ b[i]。
     """
     if k < 0:
         return np.zeros(0, dtype=float)
@@ -56,14 +55,12 @@ def bintgs_np(x: float, k: int) -> np.ndarray:
     io = 0
     absx = abs(x)
 
-    # 区间选择逻辑与 Fortran 一致
     use_series = False
     if absx > 3.0:
-        # 走“40”分支（闭式递推）
         pass
     elif absx > 2.0:
         if k <= 10:
-            pass  # 走“40”
+            pass  
         else:
             last = 15; use_series = True
     elif absx > 1.0:
@@ -78,14 +75,12 @@ def bintgs_np(x: float, k: int) -> np.ndarray:
             last = 7; use_series = True
     else:
         if absx <= 1e-6:
-            # “90”分支：x → 0 的极限
             for i in range(io, k + 1):
                 b[i] = (2 * ((i + 1) % 2)) / (i + 1.0)
             return b
         last = 6; use_series = True
 
     if not use_series:
-        # “40”分支：指数表达式 + 递推
         ex = exp(x)
         exm = 1.0 / ex
         b[0] = (ex - exm) / x
@@ -93,12 +88,10 @@ def bintgs_np(x: float, k: int) -> np.ndarray:
             b[i] = (i * b[i - 1] + ((-1) ** i) * ex - exm) / x
         return b
 
-    # “60”分支：级数展开
     for i in range(io, k + 1):
         y = 0.0
         for m in range(io, last + 1):
             xf = 1.0 if m == 0 else float(fact[m])
-            # 2*mod(m+i+1,2) -> 奇偶选择因子
             y += ((-x) ** m) * (2 * ((m + i + 1) % 2)) / (xf * (m + i + 1))
         b[i] = y
     return b
@@ -106,15 +99,15 @@ def bintgs_np(x: float, k: int) -> np.ndarray:
 
 def set_np(s1: float, s2: float, na: int, nb: int, rab: float, ii: int):
     """
-    Fortran SET 的等价实现：
-      - 决定 isp/ips 以及 sa/sb 的归属（小原子放 A，一致于 na<=nb 的规则）
-      - 计算 j、alpha、beta、jcall
-      - 调 AINTGS、BINTGS 得到 a(1..jcall+1)、b(1..jcall+1)
-    返回：(sa, sb, a_vec, b_vec, isp, ips)
+    Fortran SET :
+      - assigning isp/ips and sa/sb 
+      - calculate j、alpha、beta、jcall
+      - call AINTGS、BINTGS to obtain a(1..jcall+1)、b(1..jcall+1)
+    Return：(sa, sb, a_vec, b_vec, isp, ips)
       * a_vec[i] ↔ Fortran a(i+1)
       * b_vec[i] ↔ Fortran b(i+1)
     """
-    # 1) 交换/指派：isp/ips, sa/sb
+    # 1) isp/ips, sa/sb
     if na <= nb:
         isp, ips = 1, 2
         sa, sb = float(s1), float(s2)
@@ -122,17 +115,17 @@ def set_np(s1: float, s2: float, na: int, nb: int, rab: float, ii: int):
         isp, ips = 2, 1
         sa, sb = float(s2), float(s1)
 
-    # 2) j 与 jcall
+    # 2) j and jcall
     j = ii + 2
     if ii > 3:
         j -= 1
-    jcall = j - 1  # 这意味着需要 1..j 的 a/b → Python 里长度 jcall+1
+    jcall = j - 1 
 
     # 3) alpha / beta
     alpha = 0.5 * rab * (sa + sb)
     beta  = 0.5 * rab * (sb - sa)
 
-    # 4) 生成 a、b 数列（0-based）
+    # 4) a, b array
     a_vec = aintgs_np(alpha, jcall)
     b_vec = bintgs_np(beta,  jcall)
 

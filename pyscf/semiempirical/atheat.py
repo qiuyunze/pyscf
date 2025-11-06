@@ -1,6 +1,6 @@
 import numpy as np
 from ase.data import covalent_radii
-#### QYZ: 其余分支仍需仔细查对，确保正确 
+
 # ====== 基础工具 ======
 def _as_lookup(x):
     """允许 x 是函数或 ndarray；统一成按 Z 查值的可调用。"""
@@ -32,25 +32,15 @@ def _read_xyz(xyz_file):
     return np.array(Z, dtype=int), R
 
 def distance_euclid(R3N, i, j):
-    """欧氏距离；R3N 形状 (3,N)。"""
     d = R3N[:, i] - R3N[:, j]
     return float(np.linalg.norm(d))
 
 def dang(x1, y1, x2, y2):
-    """返回 2D 有向夹角 [-pi, pi]。"""
     det = x1 * y2 - y1 * x2
     dot = x1 * x2 + y1 * y2
     return np.arctan2(det, dot)
 
-# ====== 邻接表（无 PBC，3×N 坐标）======
 def build_bonds_simple(Z, R3N, radii, scale=1.2, max_nb=12):
-    """
-    用共价半径阈值构建 nbonds/ibonds（0-based）。
-    Z: (N,), R3N: (3,N), radii: (maxZ+1,) 给出每个 Z 的 covalent 半径（Å）
-    返回：
-      nbonds: (N,)
-      ibonds: (max_nb, N)  填不满处为 -1
-    """
     Z = np.asarray(Z, dtype=int)
     N = Z.size
     nbonds = np.zeros(N, dtype=int)
@@ -69,10 +59,10 @@ def build_bonds_simple(Z, R3N, radii, scale=1.2, max_nb=12):
                     ibonds[b, j] = i; nbonds[j] += 1
     return nbonds, ibonds
 
-# ====== C≡C 修正（PM6 系列可用）======
+# ====== correction for C≡C triple bond used in PM6 ======
 def C_triple_bond_C_pm6(nat, R3N, nbonds, ibonds, numat):
     """
-    等价 Fortran C_triple_bond_C() 的 PM6 用法。
+    MOPAC Fortran C_triple_bond_C() 
     nat: (N,), R3N: (3,N)
     """
     rmin = 1.21
@@ -82,7 +72,7 @@ def C_triple_bond_C_pm6(nat, R3N, nbonds, ibonds, numat):
 
     s = 0.0
     for i in range(numat):
-        if nat[i] != 6:  # 仅 C
+        if nat[i] != 6:  # find C atom
             continue
         nbi = int(nbonds[i])
         for kk in range(nbi):
@@ -105,16 +95,17 @@ def C_triple_bond_C_pm6(nat, R3N, nbonds, ibonds, numat):
                     + (param1 + rab * param2)
                       * (rab**3 - 3.0 * rab**4 + 3.0 * rab**5 - rab**6)
                 )
-    return s * 12.0  # 经验系数
+    return s * 12.0 
 
 def nsp2_atom_correction(R, n, i, j, k):
     """
-    Python 版 nsp2_atom_correction，对齐 Fortran：
+    Fortran nsp2_atom_correction()
       tot = 2π - (θ_ij + θ_ik + θ_jk)
       return -0.5 * exp(-10 * tot)
-    说明：
-      - R: (3, N) 或 (N, 3) 的坐标数组
-      - n 为中心 N 原子的下标；i, j, k 为其三邻居的下标（均为 0-based）
+    Parameters:
+      - R: coordination (3, N) or (N, 3)
+      - n label of central N atom (0-based)
+      - i, j, k label of three neighbors of N atom (0-based)
     """
     # R = _as_3xN(R)
     rn = R[:, n]
@@ -126,9 +117,7 @@ def nsp2_atom_correction(R, n, i, j, k):
 
     def _angle_from_sides(x, y, opp):
         """
-        由三角形的两邻边 x、y 与其对边 opp 通过余弦定理求角：
         cos θ = (x^2 + y^2 - opp^2) / (2xy)
-        数值上做 clip，避免 arccos 域错误。
         """
         den = 2.0 * x * y
         if den == 0.0:
@@ -136,29 +125,27 @@ def nsp2_atom_correction(R, n, i, j, k):
         cosv = (x*x + y*y - opp*opp) / den
         cosv = np.clip(cosv, -1.0, 1.0)
         return np.arccos(cosv)
-    # 中心到三邻居的距离（a, b, c）
+    # （a, b, c）
     a = _dist(rn, ri)  # n-i
     b = _dist(rn, rj)  # n-j
     c = _dist(rn, rk)  # n-k
 
-    # 三邻居之间的边（ab, ac, bc）
+    #（ab, ac, bc）
     ab = _dist(rj, ri)  # j-i
     ac = _dist(rk, ri)  # k-i
     bc = _dist(rj, rk)  # j-k
 
-    # 三个围绕中心原子的夹角（对应 Fortran 中 cosa, cosb, cosc）
-    theta_a = _angle_from_sides(b, c, bc)  # 角(j-n-k)
-    theta_b = _angle_from_sides(a, c, ac)  # 角(i-n-k)
-    theta_c = _angle_from_sides(b, a, ab)  # 角(j-n-i)
+    # cosa, cosb, cosc
+    theta_a = _angle_from_sides(b, c, bc)  # (j-n-k)
+    theta_b = _angle_from_sides(a, c, ac)  # (i-n-k)
+    theta_c = _angle_from_sides(b, a, ab)  # (j-n-i)
 
     tot = 2.0 * np.pi - (theta_a + theta_b + theta_c)
     return float(-0.5 * np.exp(-10.0 * tot))
 
-# ====== N(sp2) 三配位修正（依赖你的原子级校正函数）======
 def nsp2_correction_pm6(nat, R3N, nbonds, ibonds, numat, nsp2_atom_correction):
     """
-    仅在 N 原子三配位且 H 个数 < 2 时，调用 nsp2_atom_correction(coord, i, j1, j2, j3)
-    要求 nsp2_atom_correction 接受 R3N (3,N) 和四个下标（0-based）。
+    correction for 3-coordinated N atom correction with H atoms less than 2
     """
     corr = 0.0
     for i in range(numat):
@@ -171,12 +158,10 @@ def nsp2_correction_pm6(nat, R3N, nbonds, ibonds, numat, nsp2_atom_correction):
                 corr += float(nsp2_atom_correction(R3N, i, j1, j2, j3))
     return corr
 
-# ====== 识别 O=C–N–H，生成 NHCO 二面角列表 + PM6 的 htype ======
 def setup_nhco_simple(nat, R3N, numat, keywrd=""):
     """
-    返回：nhco(4,n), nnhco, htype, ii_flag
-    PM6 的 htype = 2.5（Fortran 固定值）
-    搜索阈值：O–C ≤ 1.3 Å，N–C ≤ 1.6 Å，N–H ≤ 1.3 Å，另找 N 的一个邻接 m（≤1.7 Å）
+    Returns: nhco(4,n), nnhco, htype, ii_flag
+    Threshold: O–C ≤ 1.3 Å, N–C ≤ 1.6 Å, N–H ≤ 1.3 Å, m（≤1.7 Å）
     """
     htype = 2.5000
     ii_flag = 1 if ("NOMM" in (keywrd or "")) else 0
@@ -200,7 +185,6 @@ def setup_nhco_simple(nat, R3N, numat, keywrd=""):
                         continue
                     if distance_euclid(R3N, k, l) > 1.3:
                         continue
-                    # 找 N 上另一个配位 m
                     used = False
                     for m in range(numat):
                         if m in (k, l, j):
@@ -221,11 +205,11 @@ def setup_nhco_simple(nat, R3N, numat, keywrd=""):
         nnhco = nhco.shape[1]
     return nhco, nnhco, htype, ii_flag
 
-# ====== 二面角（无 PBC，3×N）======
+# ====== dihedral angle（without PBC，3×N）======
 def dihed_simple(R3N, i, j, k, l):
     """
-    等价 Fortran dihed 在 id==0 的情形（分子，无 PBC）。
-    返回角度范围 [0, 2π)。
+    Fortran dihed id==0 (no PBC)。
+    return angle [0, 2π)。
     """
     r_ik = R3N[:, i] - R3N[:, k]
     r_jk = R3N[:, j] - R3N[:, k]
@@ -253,13 +237,11 @@ def dihed_simple(R3N, i, j, k, l):
         else:
             cosph = yj1 / yxdist
             sinph = xj1 / yxdist
-            # 绕 z 轴旋转
             xi2 = xi1 * cosph - yi1 * sinph
             xl2 = xl1 * cosph - yl1 * sinph
             yi2 = xi1 * sinph + yi1 * cosph
             yj2 = xj1 * sinph + yj1 * cosph
             yl2 = xl1 * sinph + yl1 * cosph
-            # 绕 x 轴旋转
             costh = cosa
             sinth = yj2 / dist if dist > 0 else 0.0
 
@@ -272,7 +254,7 @@ def dihed_simple(R3N, i, j, k, l):
         ang = 0.0
     return float(ang)
 
-# ====== 顶层：PM6 分子体系（无 PBC）总能修正 atheat ======
+# ====== total energy atheat ======
 def compute_atheat_pm6_mol(
     Z, R3N,
     *,
@@ -280,14 +262,14 @@ def compute_atheat_pm6_mol(
     keywrd=""
 ):
     """
-    输入：
-      Z: (N,) 原子序
-      R3N: (3,N) 坐标（Å）
-      eheat_lookup/eisol_lookup: 可函数或数组；按 Z 取值
-      fpc_9: 标量
-      covalent_radii: (maxZ+1,) 共价半径表（Å）
-      keywrd: 只影响 NHCO 的 NOMM 行为
-    返回：dict( atheat, eat, ccc_corr, nsp2_corr, sum_dihed )
+    input：
+      Z: (N,) atomic number
+      R3N: (3,N) coordinate (Å)
+      eheat_lookup/eisol_lookup: callable or array; lookup by Z
+      fpc_9: scalar
+      covalent_radii: (maxZ+1,) covalent radius table (Å)
+      keywrd: only affects NOMM behavior for NHCO
+    return：dict( atheat, eat, ccc_corr, nsp2_corr, sum_dihed )
     """
     Z = np.asarray(Z, dtype=int)
     numat = Z.size
@@ -295,25 +277,25 @@ def compute_atheat_pm6_mol(
     eH  = _as_lookup(eheat_lookup)
     Ei  = _as_lookup(eisol_lookup)
 
-    # 主项：Σ eheat(Z)
+    # Σ eheat(Z)
     atheat = float(np.sum([eH(int(z)-1) for z in Z]))
 
-    # 减去 eat * fpc_9
+    # eat * fpc_9
     eat = float(np.sum([Ei(int(z)-1) for z in Z]))
-    atheat -= eat * fpc_9
+    atheat -= eat * fpc_9   # kcal/mol
 
-    # 邻接表
+    # neighbor list
     nbonds, ibonds = build_bonds_simple(Z, R3N, radii=covalent_radii, scale=scale, max_nb=max_nb)
 
-    # C≡C 修正
+    # C≡C correction
     ccc_corr = C_triple_bond_C_pm6(Z, R3N, nbonds, ibonds, numat)
     atheat += ccc_corr
 
-    # N(sp2) 修正
+    # N(sp2) correction
     nsp2_corr = nsp2_correction_pm6(Z, R3N, nbonds, ibonds, numat, nsp2_atom_correction)
     atheat += nsp2_corr
 
-    # NHCO 二面角项
+    # NHCO correction
     nhco, nnhco, htype, _ = setup_nhco_simple(Z, R3N, numat, keywrd=keywrd)
     sum_dihed = 0.0
     for col in range(nnhco):

@@ -2,7 +2,7 @@ import numpy as np
 from h1elec import h1elec_np
 from utils import prtpar, print_title, vecprt_w
 import sys
-#### 初始化链
+
 #### inid
 ####  └─ inighd
 ####      ├─ ddpo
@@ -327,7 +327,7 @@ def ddpo(ni, env=None):
 
     if fg > 0.1:
         po[0, ni] = poij(0, 1.0, fg)   # monopole d == 1
-    if ni >= 2:   # python start from 0; 相同元素，python 中 ni要小1， 并非原子序数 
+    if ni >= 2:   # python start from 0;
         # other terms for sp basis
         # sp 
         d = aij[1, ni] / np.sqrt(12.0)
@@ -365,7 +365,7 @@ def ddpo(ni, env=None):
             ddp[5, ni] = d
             po[5, ni] = poij(2, d, fg)
     
-def inid(env=None):      # 这段代码有问题
+def inid(env=None):   
     '''
     DEFINE SEVERAL PARAMETERS FOR D-ORBITAL CALCULATIONS.
     '''
@@ -380,21 +380,21 @@ def inid(env=None):      # 这段代码有问题
     for ni in range(107):
         if not env.dorbs[ni]:
             continue
-        aijm(ni, env=env)                               # update the aij 6*107 矩阵
+        aijm(ni, env=env)                               # update the aij 6*107 matrix
         if env.zdn6[ni] > 1E-4:
-            inighd(ni, env=env)                         # update the repd 53*107 矩阵
-        ddpo(ni, env=env)                               # update the ddp 6*107 多极矩间距矩阵 and po 9*107 R->0 的极限电子密度，与单中心单电子积分有对应关系
+            inighd(ni, env=env)                         # update the repd 53*107 matrix
+        ddpo(ni, env=env)                               # update the ddp 6*107 multipole distance matrix and po 9*107 R->0 limit electron density, with corresponding single-center two-electron integral
     for i in range(106):
-        if env.natorb[i] < 6 or env.main_group[i]:     # natorb 赋值?
-            if am[i] < 1E-4:                   # am 赋值
+        if env.natorb[i] < 6 or env.main_group[i]:     
+            if am[i] < 1E-4:                   
                 am[i] = 1.0
-            po[0, i] = 0.5/am[i]               # what's am in MOPAC?
+            po[0, i] = 0.5/am[i]              
             if ad[i]>1E-5:
                 po[1, i] = 0.5/ad[i]
             if aq[i]>1E-5:
                 po[2, i] = 0.5/aq[i]
             po[6, i] = po[0, i]
-            ddp[1, i] = dd[i]                  # what's dd[i]?
+            ddp[1, i] = dd[i]                 
             ddp[2, i] = qq[i]*np.sqrt(2.0)
         po[8, i] = po[0, i]
         if env.pocord6[i] > 1E-5: 
@@ -404,7 +404,7 @@ def inid(env=None):      # 这段代码有问题
 
 def sp_two_electron(env=None):
     '''
-    用当前元素的Slater指数sp，按slater-Condon/Racah 型径向积分公式，自动从头计算过渡金属的单中心双电子参数
+    One-center two-electron integrals via slater-Condon/Racah radial integration formula
     GSS, GSP, GPP, GP2, HSP
     '''
     for ni in range(80):
@@ -424,7 +424,7 @@ def sp_two_electron(env=None):
 
 def calpar(env=None):
     '''
-    基于半经验模型参数基础参数与半经验模型方法，派生并规范化一批二次参数与常量；去掉原代码中的mindo模型分支
+    Based on the basic parameters and semi-empirical model methods of the semi-empirical model, derive and standardize a set of secondary parameters and constants; remove the MINDO model branch from the original code.
     '''
     # local variables 
     gssc = np.zeros(107)
@@ -438,7 +438,7 @@ def calpar(env=None):
     p = 2.0
     p4 = p**4
     sp_two_electron(env)      # update the parameters
-    # am, ad, aq, dd, qq 初始化在最开始
+    # am, ad, aq, dd, qq have been updated 
     iop = env.iop
     ios = env.ios
     iod = env.iod
@@ -468,20 +468,21 @@ def calpar(env=None):
         hspc[i] = -k*ios[i]*0.5         # HSPC is the number of two-electron terms of type <SP|SP>
         if zp6[i]<1E-4 and zs6[i]<1E-4:
             continue
-        zp6[i] = max(0.3, zp6[i])   # 下限截断，设置限制
+        zp6[i] = max(0.3, zp6[i])   # lower limit
         hpp = 0.5*(gpp6[i] - gp26[i])
         hpp = max(0.1, hpp)
-        # 孤立原子能的构造
+        # isolated atomic electron energy
         eisol[i] = uss6[i]*ios[i] + upp6[i]*iop[i] + udd6[i]*iod[i] + gss6[i]*gssc[i] + gpp6[i]*gppc[i] + \
                     gsp6[i]*gspc[i] + gp26[i]*gp2c[i] + hsp6[i]*hspc[i]
         qn = nspqn[i]
-        # 基于原子 Slater 轨道的径向矩常数，分别对应偶极（dipole）和四极（quadrupole）通道的“长度尺度”。它们不是几何距离，而是同一原子上由 s/p 价层轨道的 Slater 指数与主量子数推导出的径向积分尺度，用于把一中心两电子积分（如 HSP 与 HPP）与 Slater 指数自洽起来。
+        # Based on the radial moment constants of atomic Slater orbitals, they correspond to the "length scales" of the dipole and quadrupole channels respectively. 
+        # They are not geometric distances, but radial integral scales derived from the Slater exponents and principal quantum numbers of the s/p valence orbitals on the same atom, which are used to self-consistently align one-center two-electron integrals (such as HSP and HPP) with the Slater exponents.
         # Theoret. Chim. Acta (Bert.) 46, 89-104 (1977) 式 （15） （16）已推广
         dd[i] = (2.0*qn + 1)*(4.0*zs6[i]*zp6[i])**(qn + 0.5)/(zs6[i]+zp6[i])**(2.0*qn + 2)/np.sqrt(3)
         qq[i] = np.sqrt((4.0*qn*qn + 6.0*qn + 2.0)/20.0)/zp6[i]
         # CALCULATE ADDITIVE TERMS, IN ATOMIC UNITS.
         jmax = 5
-        gdd1 = (hsp6[i]/(Ha2eV*dd[i]**2))**(1.0/3.0)   # 括号位置错误 (hsp6[i])/(Ha2eV*dd[i]**2)**(1.0/3.0)
+        gdd1 = (hsp6[i]/(Ha2eV*dd[i]**2))**(1.0/3.0)   
         d1 = gdd1
         d2 = gdd1 + 0.04
         for j in range(jmax):
@@ -530,19 +531,17 @@ def calpar(env=None):
 
     am[101] = 1E-10
 
-#### 原子对链
 #### rotatd
 ####  ├─ reppd
-####  │   └─ to_point         （远距退化成点电荷近似的保护）
-####  ├─ reppd2               （可选：补充/修正项）
-####  ├─ tx                   （把 reppd 产出的 22 个径向量做组合）
-####  ├─ spcore               （生成电-核块的不变张量 cored）
-####  ├─ rotmat               （构造方向余弦/旋转，把局域 s/p/d 张量旋到实验室系）
-####  ├─ w2mat                （把两电子矩阵块写入一维缓冲 w，并推进 kr）
-####  ├─ elenuc               （用 cored 与旋转张量 sp/pp/sd/dp/dd 累加到 H 的下三角）
-####  └─ aijm 或 ccrep(*)     （核-核排斥能的本对贡献）
+####  │   └─ to_point          # Note: long distance limit is not implemented in this basic pyPM6 module.
+####  ├─ reppd2                # augmented term
+####  ├─ tx                    # combination of radial vectors generated by reppd function
+####  ├─ spcore                # electron-core tensor cored
+####  ├─ rotmat                # rotate the local s/p/d tensor into the laboratory system
+####  ├─ w2mat                 # write the two-electron matrix block into the one-dimensional buffer w and advance kr
+####  ├─ elenuc                # accumulate the electron-core tensor cored with the rotated s/p/d tensor into the lower triangle of H
+####  └─ aijm 或 ccrep(*)      # core-core repulsion term
 a0 =  0.529177210903
-Ha2eV = 27.211386245988 
 def charg_np(r, l1, l2, m, da, db, add):
     # Q-Q
     if l1 == 0 and l2 == 0:
@@ -670,16 +669,15 @@ def rijkl(ni, nj, ij, kl, li, lj, lk, ll, ic, r, env=None):
     '''
     (ij,kl) multipole interaction
     '''
-    # 索引很重要，所有都是0-based
+    # 0-based indices
     indx = env.indx
     po = env.po
     ddp = env.ddp
     ch = env.ch
-    # 0-basis 转化
+
     ni_idx = ni 
     nj_idx = nj 
-    # ij_idx = ij - 1
-    # kl_idx = kl - 1
+
     # L组合限制
     l1min = min(abs(li - lj), 2)
     l1max = min(li+lj, 2)
@@ -731,7 +729,7 @@ def rijkl(ni, nj, ij, kl, li, lj, lk, ll, ic, r, env=None):
 
             s1 = 0.0 
             for m in range(-lmin, lmin + 1):
-                ccc = ch[ij, l1, m + 2] * ch[kl, l2, m + 2]  # 注意这里的第一个索引序号
+                ccc = ch[ij, l1, m + 2] * ch[kl, l2, m + 2]  
                 if ccc == 0.0:
                     continue
                 mm = abs(m)
@@ -742,32 +740,24 @@ def rijkl(ni, nj, ij, kl, li, lj, lk, ll, ic, r, env=None):
 
 def reppd(ni, nj, rij, env=None):  
     """
-    NumPy 实现的 reppd（0-basis）。
+    NumPy 0-based reppd
     Parameters
     ----------
     ni, nj : int
-        0-based 元素/原子类型索引。
+        0-based atomic index
     rij : float
-        原子间距离（与 to_point 的输入单位一致；Fortran 中传入 Å）。
+        atomic distance (Å)
     natorb, dd, qq, am, ad, aq : (N,) arrays
-        模型参数（见 MOPAC/NDDO）。
+        ( MOPAC/NDDO)。
     po : (9, N) array
-        模型参数表；po[0] 对应 Fortran po(1,*), po[8] 对应 po(9,*)
-    ev, a0 : float
-        常数（能量单位缩放、波尔半径等）。
-    l_feather : bool
-        是否启用 feather 平滑。
-    to_point : callable or None
-        若启用 feather，必须提供：point,const = to_point(rij)
+        parameter table
 
     Returns
     -------
     ri : (22,) float64
-        两电子两中心积分（顺序与原 Fortran 注释一致）。
+        2 center 2 electron integrals
     gab : float
-        G_(AB)（用于核-核项）。
     """
-    # 常量
     td = 2.0
     half = 0.5
     
@@ -777,32 +767,30 @@ def reppd(ni, nj, rij, env=None):
     ad = env.ad
     aq = env.aq
     po = env.po
-    # 结果容器
+    # output
     ri = np.zeros(22, dtype=np.float64)
 
-    # 距离缩放
+    # scale the distance
     r = rij / a0
     rsq = r * r
 
-    # 原 Fortran 末尾的符号列表 nri（1-based -> 0-based）
+    #  nri（FORTRAN 1-based -> PYTHON 0-based）
     nri = np.array([ 1,-1, 1, 1,-1, 1, 1,-1,-1,-1, 1, 1,-1,-1,-1, 1, 1, 1, 1, 1, 1, 1],
                    dtype=np.int8)
 
-    # 是否为“重原子”  (natorb >= 3)
+    # Heavy atom ? (natorb >= 3)
     si = (env.natorb[ni] >= 3)
     sj = (env.natorb[nj] >= 3)
 
-    # ===== G_AB（核-核）使用的 aee_cc =====
+    # ===== G_AB (core-core) aee_cc =====
     aee_cc = po[8, ni] + po[8, nj]   # Fortran po(9,ni)+po(9,nj)
     aee_cc = aee_cc * aee_cc
     gab = Ha2eV / np.sqrt(rsq + aee_cc)
 
-    # ===== 两电子两中心 积分共用的 aee_te =====
-
-
+    # ===== aee_te =====
     aee_te = (half / am[ni] + half / am[nj]) ** 2
 
-    # 分三类：H-H；Heavy-H；Heavy-Heavy
+    # 3 classes：H-H；Heavy-H；Heavy-Heavy
     if (not si) and (not sj):
         # ------ H - H  (SS/SS) ------
         ri[0] = Ha2eV / np.sqrt(rsq + aee_te)
@@ -871,7 +859,6 @@ def reppd(ni, nj, rij, env=None):
 
         arg = np.empty(72, dtype=np.float64)
 
-        # 下面保持与 Fortran 相同的编号（这里只是 0-based 下标）
         arg[0]  = rsq + aee_te
         arg[1]  = (r + da) ** 2 + ade
         arg[2]  = (r - da) ** 2 + ade
@@ -935,7 +922,6 @@ def reppd(ni, nj, rij, env=None):
         arg[51] = (r - qa - qb) ** 2 + aqq
         arg[52] = (r - qa + qb) ** 2 + aqq
 
-        # 下面切换：qa, qb 改为不乘以 td 的“裸值”
         qa0 = qq[ni]
         qb0 = qq[nj]
         arg[53] = (da - qb0) ** 2 + (r - qb0) ** 2 + adq
@@ -990,7 +976,6 @@ def reppd(ni, nj, rij, env=None):
         qxzqxz =  ev3/sqr[64]   - ev3/sqr[66]  - ev3/sqr[68] + ev3/sqr[70] \
                  - ev3/sqr[65]  + ev3/sqr[67]  + ev3/sqr[69] - ev3/sqr[71]
 
-        # 输出 ri（0-based 索引）
         ri[0]  = ee
         ri[1]  = -dze
         ri[2]  = ee + qzze
@@ -1013,7 +998,7 @@ def reppd(ni, nj, rij, env=None):
         ri[19] = qxzqxz
         ri[20] = ee + eqxx + qxxe + qxxqyy
         ri[21] = half * (qxxqxx - qxxqyy)
-    # 末尾符号修正（与 Fortran nri 相同）
+
     ri *= nri
     return ri, float(gab)
 
@@ -1024,26 +1009,19 @@ def reppd2(ni, nj, r, ri, env=None):
     Parameters
     ----------
     ni, nj : int
-        0-based 元素/原子类型索引（Fortran 的原子序号-1）。
+        0-based atomic index
     r : float
-        原子间距（Bohr）。
+        atomic distance(Bohr)。
     ri : (22,) array_like
-        两中心局域积分（顺序与 Fortran 注释一致）。
+        2-center local integrals
     tore : (N,) array_like
-        元素相关系数。
     dorbs : (N,) bool array
-        是否含 d 轨道。
     indexd : (9,9) int array (0-based)
-        AO 对 (i,j) → SPD 标准对索引 (0..44)。
+        AO 对 (i,j) → SPD index (0..44)。
     ind2 : (45,45) int array (0-based)
-        (ij,kl) → 全部两电子积分的线性下标 (0..490)。
+        (ij,kl) → (0..490)。
     isym : (491,) int array (0-based, 可带符号)
-        对每个编号的对称映射：0 表示需计算；>=34 表示拷贝自该下标；
-        <= -34 表示取负号并拷贝自其相反数的下标。
-    ev, a0 : float
-        常数。
-    l_feather : bool
-        是否启用 feather 平滑。
+        index table; Correct the sign of integrals
     rijkl : callable
         rijkl(ni,nj,ij,kl,li,lj,lk,ll,ic,r) -> float
     to_point_fn : callable
@@ -1065,7 +1043,7 @@ def reppd2(ni, nj, r, ri, env=None):
     rep = np.zeros(491, dtype=np.float64)
     core = np.zeros((10, 2), dtype=np.float64)
 
-    # --- 首 34 项由局域积分 ri 映射而来 ---
+    # --- the first 34 terns are derived from local integral ri ---
     # Fortran ipos (1-based) -> 0-based：
     ipos = np.array([
         1, 5,11,12,12, 2, 6,13,14,14, 3, 8,16,18,18, 7,15,10,20, 4, 9,17,19,21,
@@ -1073,18 +1051,17 @@ def reppd2(ni, nj, r, ri, env=None):
     ], dtype=int) - 1
     rep[:34] = ri[ipos]
 
-    # 如果无 d 轨道，则到此结束（与原 Fortran 相同逻辑）
     if not (dorbs[ni] or dorbs[nj]):
         return rep, core
 
-    # --- AO 类型序列（i=0..8）：S(0), 3*P(1), 5*D(2) ---
+    # --- AO type（i=0..8）：S(0), 3*P(1), 5*D(2) ---
     lorb = np.array([0, 1,1,1, 2,2,2,2,2], dtype=int)
 
-    # lasti/lastk：该原子最多参与到第几个 AO（含 d→9，p→4，H/He→1）
-    lasti = 9 if dorbs[ni] else (1 if ni < 2 else 4)   # 注意：0-based，H/He 判断 ni<2
+    # lasti/lastk： AO (d→9，p→4，H/He→1)
+    lasti = 9 if dorbs[ni] else (1 if ni < 2 else 4)   
     lastk = 9 if dorbs[nj] else (1 if nj < 2 else 4)
     
-    # --- 主循环：生成编号 > 34 的积分 ---
+    # --- Main loop ---
     for i in range(lasti):
         li = lorb[i]
         for j in range(i + 1):
@@ -1102,25 +1079,20 @@ def reppd2(ni, nj, r, ri, env=None):
 
                     idx = int(ind2[ij, kl])  # 0..490
                     if idx <= 33:
-                        continue  # 前 34 个已由 ri 映射
+                        continue  
 
-                    nold = int(isym[idx])   # nold 与fortran 一致
+                    nold = int(isym[idx])  
                     if nold >= 35:
                         rep[idx] = rep[nold-1]
                     elif nold <= -35:
                         rep[idx] = -rep[-nold-1]
                     elif nold == 0:
-                        # 需要显式计算
                         val = rijkl(ni, nj, ij, kl, li, lj, lk, ll, 0, r, env=env) * Ha2eV
-                        # print('rep[%d]:%.8f'%(idx, val))
                         rep[idx] = val
                     #else:
-                    # 理论上不应出现（Fortran 没有该分支）
                     #    rep[idx] = rep[nold]
-    # --- 核-电子“core”额外项（仅对含 d 的一侧需要）---
-    # SS 对应的对索引（左/右均为 S）
-    # dorbs(nj): 右侧含 d
-    if dorbs[nj]:
+    # d at right hand
+    if dorbs[nj]: 
         # <S S | D S>
         kl = int(indexd[4, 0])  # (5,1) -> 0-based (4,0)
         core[4, 1] = -rijkl(ni, nj, ij, kl, 0, 0, 2, 0, 1, r, env=env) * Ha2eV * tore[ni]
@@ -1140,7 +1112,7 @@ def reppd2(ni, nj, r, ri, env=None):
         kl = int(indexd[7, 7])  # (8,8)
         core[9, 1] = -rijkl(ni, nj, ij, kl, 0, 0, 2, 2, 1, r, env=env) * Ha2eV * tore[ni]
 
-    # dorbs(ni): 左侧含 d
+    # dorbs(ni):  d at left hand
     if dorbs[ni]:
         # <D S | S S>
         kl = int(indexd[4, 0])  # (5,1)
@@ -1165,32 +1137,27 @@ def reppd2(ni, nj, r, ri, env=None):
 
 def rotmat(nj, ni, coordi, coordj, env=None):
     """
-    NumPy 版 rotmat（全 0-basis；不依赖全局占位数组）。
+    NumPy 0-based rotmat 
 
     Parameters
     ----------
     nj, ni : int
-        0-based 的原子类型/索引，仅用于 dorbs 判定。
+        0-based atomic index for determining dorbs
     coordi, coordj : array-like, shape (3,)
-        两原子笛卡尔坐标（单位自洽即可；r 以同单位返回）。
     dorbs : array-like of bool
-        每个元素是否包含 d 轨道的布尔表。
 
     Returns
     -------
     r   : float
-        两原子距离（与坐标单位一致）。
     sp  : (3,3) ndarray
     pp  : (6,3,3) ndarray
     sd  : (5,5) ndarray
     dp  : (15,5,3) ndarray
     d_d : (15,5,5) ndarray
     """
-    # 常量
     small = 1.0e-07
     pt5sq3 = 0.8660254037841  # = sqrt(3)/2
 
-    # 向量与几何量
     coordi = np.asarray(coordi, dtype=float).reshape(3)
     coordj = np.asarray(coordj, dtype=float).reshape(3)
     x11, x22, x33 = (coordj - coordi)
@@ -1200,7 +1167,7 @@ def rotmat(nj, ni, coordi, coordj, env=None):
     sb = sqb / r if r > 0.0 else 0.0
 
     dorbs = env.dorbs
-    # 角函数：sa=sin(phi), ca=cos(phi); sb=sin(theta), cb=cos(theta)
+    # angular function：sa=sin(phi), ca=cos(phi); sb=sin(theta), cb=cos(theta)
     if sb > small:
         ca = x11 / sqb
         sa = x22 / sqb
@@ -1218,7 +1185,7 @@ def rotmat(nj, ni, coordi, coordj, env=None):
             ca = 0.0
             cb = 0.0
 
-    # 3×3 旋转块 p（Fortran: p(row,col)）
+    # 3×3 rotation matrix p（Fortran: p(row,col)）
     p = np.empty((3, 3), dtype=float)
     p[0, 0] = ca * sb
     p[1, 0] = ca * cb
@@ -1232,15 +1199,15 @@ def rotmat(nj, ni, coordi, coordj, env=None):
     p[1, 2] = -sb
     p[2, 2] = 0.0
 
-    # === 输出矩阵 ===
+    # === output matrix ===
     # p *= -1
     sp = p.copy()                 # S-P
     pp  = np.zeros((6, 3, 3))     # P-P
-    sd  = np.zeros((5, 5))        # S-D（若需要）
-    dp  = np.zeros((15, 5, 3))    # D-P（若需要）
-    d_d = np.zeros((15, 5, 5))    # D-D（若需要）
+    sd  = np.zeros((5, 5))        # S-D
+    dp  = np.zeros((15, 5, 3))    # D-P
+    d_d = np.zeros((15, 5, 5))    # D-D
 
-    # --------- P-P 块（与 Fortran 完全一致的下三角/对角填充）---------
+    # --------- P-P block ---------
     for k in range(3):  # k = 0..2
         pp[0, k, k] = p[k, 0] * p[k, 0]
         pp[1, k, k] = p[k, 1] * p[k, 1]
@@ -1250,7 +1217,7 @@ def rotmat(nj, ni, coordi, coordj, env=None):
         pp[5, k, k] = p[k, 1] * p[k, 2]
         if k == 0:
             continue
-        # 下三角 j=0..k-1
+        # lower triangle j=0..k-1
         j_slice = slice(0, k)
         pp[0, k, j_slice] = 2.0 * p[k, 0] * p[:k, 0]
         pp[1, k, j_slice] = 2.0 * p[k, 1] * p[:k, 1]
@@ -1259,7 +1226,6 @@ def rotmat(nj, ni, coordi, coordj, env=None):
         pp[4, k, j_slice] = p[k, 0] * p[:k, 2] + p[k, 2] * p[:k, 0]
         pp[5, k, j_slice] = p[k, 1] * p[:k, 2] + p[k, 2] * p[:k, 1]
 
-    # 如任一侧含 d 轨道，则构造 d 相关块
     if bool(dorbs[ni]) or bool(dorbs[nj]):
         c2a = 2.0 * ca * ca - 1.0
         c2b = 2.0 * cb * cb - 1.0
@@ -1267,31 +1233,31 @@ def rotmat(nj, ni, coordi, coordj, env=None):
         s2b = 2.0 * sb * cb
 
         d = np.empty((5, 5), dtype=float)
-        # 第一列
+        # first column
         d[0, 0] = pt5sq3 * c2a * sb * sb
         d[1, 0] = 0.5 * c2a * s2b
         d[2, 0] = -s2a * sb
         d[3, 0] = c2a * (cb * cb + 0.5 * sb * sb)
         d[4, 0] = -s2a * cb
-        # 第二列
+        # second column
         d[0, 1] = pt5sq3 * ca * s2b
         d[1, 1] = ca * c2b
         d[2, 1] = -sa * cb
         d[3, 1] = -0.5 * ca * s2b
         d[4, 1] = sa * sb
-        # 第三列
+        # third column
         d[0, 2] = cb * cb - 0.5 * sb * sb
         d[1, 2] = -pt5sq3 * s2b
         d[2, 2] = 0.0
         d[3, 2] = pt5sq3 * sb * sb
         d[4, 2] = 0.0
-        # 第四列
+        # fourth column
         d[0, 3] = pt5sq3 * sa * s2b
         d[1, 3] = sa * c2b
         d[2, 3] = ca * cb
         d[3, 3] = -0.5 * sa * s2b
         d[4, 3] = -ca * sb
-        # 第五列
+        # fifth column
         d[0, 4] = pt5sq3 * s2a * sb * sb
         d[1, 4] = 0.5 * s2a * s2b
         d[2, 4] = c2a * sb
@@ -1300,7 +1266,7 @@ def rotmat(nj, ni, coordi, coordj, env=None):
 
         sd = d.copy()  # S-D
 
-        # D-P：15×5×3，逐列外积
+        # D-P：15×5×3
         for k in range(5):  # k = 0..4
             dp[0,  k, :] = d[k, 0] * p[:, 0]
             dp[1,  k, :] = d[k, 0] * p[:, 1]
@@ -1318,7 +1284,7 @@ def rotmat(nj, ni, coordi, coordj, env=None):
             dp[13, k, :] = d[k, 4] * p[:, 1]
             dp[14, k, :] = d[k, 4] * p[:, 2]
 
-        # D-D：与 Fortran 相同的对角与下三角填充
+        # D-D
         for k in range(5):  # 0..4
             d_d[0,  k, k] = d[k, 0] * d[k, 0]
             d_d[1,  k, k] = d[k, 1] * d[k, 1]
@@ -1358,34 +1324,28 @@ def rotmat(nj, ni, coordi, coordj, env=None):
 
 def ccrep_pm6(ni, nj, r_bohr, gab, eps_div=1e-12, env=None):
     """
-    计算 PM6 的核-核排斥能（只实现 PM6 分支）。
+    Calculate PM6 core-core repulsion (eV).
 
     Parameters
     ----------
     ni, nj : int
-        0-basis 元素索引（H=0）。
-    r_bohr : float
-        核间距（Bohr）。
+    r_bohr : float。
     gab : float
-        单极项（来自上游的核-核库仑能量系数，单位 eV）。
+        mono-pole term 
     a0 : float
-        波尔半径（Å）。
     alp, tore : ndarray
-    guess1, guess2, guess3 : ndarray
-        大致形状 (nZ, 4)。ig=0..3 对应 Fortran 的 1..4。
+    guess1, guess2, guess3 : (nZ, 4) ndarray
     alpb, xfac : ndarray
-        形状 (nZ, nZ)，成对参数。
     par1..par4 : float
-        经验修正常数（PM6 用到 par1, par2, par3, par4）。
+        empirical correction; PM6 would use par1, par2, par3, par4.
     eps_div : float
-        1/r 项的除零保护。
 
     Returns
     -------
     enuclr : float
-        PM6 的核-核排斥能（eV）。
+        
     """
-    # 1) 单位：Bohr -> Å
+    # 1) Bohr -> Å
     r = float(r_bohr) * float(a0)
     tore = env.tore
     xfac = env.xfac
@@ -1397,22 +1357,21 @@ def ccrep_pm6(ni, nj, r_bohr, gab, eps_div=1e-12, env=None):
     par2 = env.v_par6[1]   # Used in ccrep for exponent correction of C-C triple bonds.
     par3 = env.v_par6[2]
     par4 = env.v_par6[3]
-    # 2) 单极项（库仑+电荷缩放）
+    # 2) monopole term 
     enuc = float(tore[ni]) * float(tore[nj]) * float(gab)
-    # 3) 成键信息与是否有成键参数
+    # 3) bonding 
     fff = float(xfac[ni, nj])
     has_bond_params = abs(fff) > 1e-5
 
-    # 4) PM6 的主缩放
+    # 4) scale term in PM6 
     if has_bond_params:
         abond = float(alpb[ni, nj])
         if abond < 1e-6:
-            abond = 1.2  # 默认回退
+            abond = 1.2  
 
-        # 基本缩放（PM6）
         scale = 1.0 + 2.0 * fff * np.exp(-abond * (r + 0.0003 * r**6))
 
-        # 特例修正
+        # specific correction 
         i_big = max(ni, nj)
         j_small = min(ni, nj)
 
@@ -1421,49 +1380,40 @@ def ccrep_pm6(ni, nj, r_bohr, gab, eps_div=1e-12, env=None):
             if i_big in (5, 6):   # C or N（0-basis）
                 scale = 1.0 + 2.0 * fff * np.exp(-abond * r**2)
             elif i_big == 7:      # O（0-basis）
-                # 慢 O-H 项；注意原式 par4*r*2 即 2*par4*r
                 scale = 1.0 + 2.0 * fff * np.exp(-abond * r**2) - par3 * np.exp(-2.0 * par4 * r)
 
-        # C≡C 三键热形成修正
+        # C≡C triple bond
         if j_small == 5 and i_big == 5:  # C-C（0-basis）
             scale = scale + par1 * np.exp(-par2 * r)
 
-        # Si-O 长程弱相互作用修正
+        # Si-O long-range weak interaction correction
         if j_small == 7 and i_big == 13:  # O-Si（0-basis：O=7, Si=13）
             scale = scale - 0.7e-3 * np.exp(-(r - 2.9)**2)
 
         enuclr = enuc * scale
     else:
-        # 无成键参数的 PM6 通用核-核项
-        # 镧系（Z=57..71 -> 0-basis: 56..70）用更快衰减
+        # general core-core term without bonding parameters 
         in_f_block = (56 <= ni <= 70) or (56 <= nj <= 70)
         k = 3.0 if in_f_block else 2.18
         scale = 10.0 * np.exp(-k * r)
-        # 注：这里沿用原 Fortran 的 abs(scale*enuc)+enuc 形式
         enuclr = abs(scale * enuc) + enuc
 
-    # 5) VdW / 高斯修正（PM6）
-    # 先做 ig=1 的“专用 VdW”项（两侧各一项）
-    # 注意：当无成键参数时，后续还会再加 ig=1..4 的通用项（与原代码一致，会“重复”叠加 ig=1）
+    # 5) VdW / Gaussian correction（PM6）
     scale_vdw = 0.0
-    # 右侧：以 1/r 加权
     invr = 1.0 / max(r, eps_div)
     for Z in (ni, nj):
         ax = float(guess2[Z, 0]) * (r - float(guess3[Z, 0]))**2
         if ax < 25.0:
             scale_vdw += float(tore[ni]) * float(tore[nj]) * invr * float(guess1[Z, 0]) * np.exp(-ax)
 
-    # 是否再叠加 ig=1..4 的通用项
     i_max = 0 if has_bond_params and (abond > 1e-4) else 4
 
     for ig in range(i_max):  # ig=0..3 <=> Fortran 1..4
-        # 对 ni
         g1 = float(guess1[ni, ig])
         if g1 != 0.0:
             ax = float(guess2[ni, ig]) * (r - float(guess3[ni, ig]))**2
             if ax <= 25.0:
                 scale_vdw += float(tore[ni]) * float(tore[nj]) * invr * g1 * np.exp(-ax)
-        # 对 nj
         g1 = float(guess1[nj, ig])
         if g1 != 0.0:
             ax = float(guess2[nj, ig]) * (r - float(guess3[nj, ig]))**2
@@ -1471,9 +1421,9 @@ def ccrep_pm6(ni, nj, r_bohr, gab, eps_div=1e-12, env=None):
                 scale_vdw += float(tore[ni]) * float(tore[nj]) * invr * g1 * np.exp(-ax)
 
     enuclr = enuclr + scale_vdw
-    # 6) 额外的“12”势（仅影响极短程行为；不影响焓）
-    zi = (ni + 1.0)**(0.3333) # (1.0 / 3.0)  # 0-basis -> 原子序近似
-    zj = (nj + 1.0)**(0.3333) # (1.0 / 3.0)   # 注意这里采用1/3和0.3333 结果不同，采用mopac原始代码的0.3333
+    # 6) additional “12” potentials (short distance)
+    zi = (ni + 1.0)**(0.3333) # (1.0 / 3.0) 
+    zj = (nj + 1.0)**(0.3333) # (1.0 / 3.0)   # follow mopac: 0.3333. numerical inconsistence would be generated if 1/3 is used
     ax = r / (zi + zj)
     if ax < 3.0:
         lj12 = 1.0e-8 / (ax**12)
@@ -1482,27 +1432,20 @@ def ccrep_pm6(ni, nj, r_bohr, gab, eps_div=1e-12, env=None):
 
 def spcore(ni, nj, r_bohr, env=None):
     """
-    NumPy 版 spcore（0-basis；r 以 Bohr 传入）
+    NumPy 0 based  spcore
 
     Parameters
     ----------
     ni, nj : int
-        元素索引（0-basis；H=0, He=1, Li=2, ...）
-    r_bohr : float
-        两核间距（Bohr）
+    r_bohr : floa
     ev : float
-        eV 与原子单位的换算常数（与 Fortran 相同）
     tore : (nZ,) ndarray
-        核电荷缩放因子
     po : (>=9, nZ) ndarray
-        元素相关参数表（行 0.. 为 Fortran 的 1..）
     ddp : (>=4, nZ) ndarray
-        元素相关参数表（行 0.. 为 Fortran 的 1..）
 
     Returns
     -------
     core : (10, 2) ndarray
-        局域坐标系下的核-电子吸引积分（只填充第 1..4 行；其余为 0）
     """
     core = np.zeros((10, 2), dtype=float)
     po = env.po
@@ -1523,14 +1466,12 @@ def spcore(ni, nj, r_bohr, env=None):
     core[0, 0] = -float(tore[nj]) * Ha2eV / np.sqrt(r2 + ssj)  # core(1,1)
     core[0, 1] = -float(tore[ni]) * Ha2eV / np.sqrt(r2 + ssi)  # core(1,2)
 
-    # 是否为“重原子”（Fortran 条件 ni>=3 或 nj>=3；0-basis 则 z>=2）
+    # heavy atoms?
     heavy_i = (ni >= 2)
     heavy_j = (nj >= 2)
 
-    # 系数（Fortran pxy）
     pxy = np.array([1.0, -0.5, -0.5, 0.5, 0.25, 0.25, 0.5], dtype=float)
 
-    # --- NI 为重原子：填充 core(:,1) 的 2..4 行 ---
     if heavy_i:
         # Fortran:
         # ppj=(acj+po(7,ni))^2; da=ddp(2,ni); qa=ddp(3,ni)/sqrt(2)
@@ -1559,7 +1500,6 @@ def spcore(ni, nj, r_bohr, env=None):
         core[2, 0] = -float(tore[nj]) * aj3  # core(3,1)
         core[3, 0] = -float(tore[nj]) * aj4  # core(4,1)
 
-    # --- NJ 为重原子：填充 core(:,2) 的 2..4 行 ---
     if heavy_j:
         # Fortran：
         # ppi=(aci+po(7,nj))^2; db=ddp(2,nj); qb=ddp(3,nj)/sqrt(2)
@@ -1590,11 +1530,10 @@ def spcore(ni, nj, r_bohr, env=None):
     return core
 
 def tx(ii, kk, rep, sp, pp, sd, dp, d_d, env=None):
-    ind2   = env.ind2   # (45,45), 0=无，>0 为 Fortran 1-base rep 下标
+    ind2   = env.ind2   # (45,45) 
     indx   = env.indx   # (9,9)   -> 0..44
     indexd = env.indexd # (9,9)   -> 0..44
 
-    # met：按 0-base 存，直接用 met[ll0]
     met = np.array(
         [1,2,3,2,3,3,2,3,3,3,4,5,5,5,6,4,5,5,5,6,6,4,5,5,5,6,6,6,4,5,5,5,6,6,6,6,4,5,5,5,6,6,6,6,6],
         dtype=int
@@ -1603,18 +1542,18 @@ def tx(ii, kk, rep, sp, pp, sd, dp, d_d, env=None):
     v    = np.zeros((45,45), dtype=float)
     logv = np.zeros((45,45), dtype=bool)
 
-    limkl0 = indx[kk-1, kk-1]  # 0-base 列上界（含）
+    limkl0 = indx[kk-1, kk-1]  
     
     for i1 in range(ii):                 # 0..ii-1
-        for j1 in range(i1+1):           # 0..i1  （含端点）
+        for j1 in range(i1+1):           # 0..i1
             ij = indexd[i1, j1]          # 0..44
             for k1 in range(kk):               # 0..kk-1
-                for l1 in range(k1+1):         # 0..k1  （含端点）
+                for l1 in range(k1+1):         # 0..k1 
                     kl = indexd[k1, l1]        # 0..44
-                    nd = int(ind2[ij, kl])     # 0=无，>0 为 Fortran 1-base
+                    nd = int(ind2[ij, kl])     
                     if nd == -1:
                         continue
-                    wrepp = float(rep[nd])   # rep 是 0-base，因此 nd-1
+                    wrepp = float(rep[nd])   
                     ll0 = indx[k1, l1]         # 0..44
                     mm  = int(met[ll0])        # 1..6
                     if   mm == 1:
@@ -1637,7 +1576,6 @@ def tx(ii, kk, rep, sp, pp, sd, dp, d_d, env=None):
                         v[ij, 8] += pp[5, k, l] * wrepp
 
                     elif mm == 4:  # DS
-                        # Fortran: k = k1-4 (1-base) -> 0-base 的 d 轨道序号 = k1-3..7 映射到 0..4
                         k = k1 - 4        # 0..4
                         v[ij,10] += sd[k,0] * wrepp
                         v[ij,15] += sd[k,1] * wrepp
@@ -1691,33 +1629,29 @@ def tx(ii, kk, rep, sp, pp, sd, dp, d_d, env=None):
 
 def w2mat(ww, w, kr, limij, limkl):
     """
-    NumPy 版 w2mat：把二维块 ww(kl, ij) 线性存入一维缓冲 w，并累加 kr。
+    NumPy w2mat: store ww(kl, ij) into one-dimensional w and update current position kr。
 
     Parameters
     ----------
     ww : array_like
-        - 若为 2D，形状必须是 (limkl, limij)，对应 Fortran 的 ww(kl,ij)
-        - 若为 1D，长度须为 limkl*limij（Fortran 构造顺序：kl 为内循环）
+        - 2D: shape (limkl, limij)
+        - 1D: length limkl*limij
     limij : int
-        ij 方向的上限（Fortran 的 indx(ii,ii)）
+        upper limit of ij 
     limkl : int
-        kl 方向的上限（Fortran 的 indx(kk,kk)）
+        upper limit of kl 
     kr : int, optional
-        输入/累加的计数器（Fortran 的 intent(inout)）
     w : ndarray or None
-        若提供，则用作输出缓冲（一维至少容纳 limij*limkl 元素）；
-        否则新建并返回。
 
     Returns
     -------
     w_out : (limij*limkl,) ndarray
-        线性写入后的缓冲
     kr_new : int
         kr + limij*limkl
     """
     L = int(limij) * int(limkl)
 
-    # 规范化 ww -> 1D 顺序与 Fortran 相同（ij 外层、kl 内层）
+    # normalize ww -> 1D 
     ww = np.asarray(ww)
     if ww.ndim == 2:
         if ww.shape != (limkl, limij):
@@ -1730,7 +1664,6 @@ def w2mat(ww, w, kr, limij, limkl):
     else:
         raise ValueError("ww must be 1D or 2D")
 
-    # 输出缓冲
     if w is None:
         w_out = flat.copy()
     else:
@@ -1743,14 +1676,12 @@ def w2mat(ww, w, kr, limij, limkl):
 
 
 # ---------------------------
-# wstore: 一中心 + 转置项（只做一中心部分；转置项外部已有）
+# wstore: one-center block in 2-electron integrals
 # ---------------------------
 def wstore_np(w_buf, kr, ni, ilim, env):
-    # 取出从 kr 开始的 ilim*ilim 段，按 Fortran(列主序) reshape 成 (ilim,ilim)
-    ni = ni - 1  # 在hcore中被调用，ni输入的是原子序数 
+    ni = ni - 1  # called in hcore with the input of 1-based atomic number
     block = w_buf[kr:kr+ilim*ilim].reshape((ilim, ilim), order='F')
 
-    # 下面在 block 上做与 Fortran 相同的写入：
     block[:, :] = 0.0
     block[0, 0] = env.gss6[ni]
 
@@ -1780,14 +1711,13 @@ def wstore_np(w_buf, kr, ni, ilim, env):
         block[ip0+7, ip0+7] = val
         block[ip0+8, ip0+8] = val
 
-        # d 一中心（243 项），Fortran 索引→0-based
+        # d one-center（243 terms）
         if ilim > 10:
             ij = env.intij - 1
             kl = env.intkl - 1
             rp = env.intrep - 1
             block[ij, kl] = env.repd[rp, ni]
 
-    # 推进写指针（与 Fortran：kr = kr + ilim**2 对齐）
     return kr + ilim*ilim
 
 
@@ -1797,29 +1727,25 @@ def elenuc(
     env=None
 ):
     """
-    将核稳定化项累加到一电子打包矩阵 h（与 Fortran elenuc 等价）。
+    electron-nucli interaction energy
 
-    参数（全部 0-basis 张量）:
-      ia, ib, ja, jb : int
-          1-basis 的 AO 区间端点：
-            第1个原子块: i ∈ [ia, ib]
-            第2个原子块: i ∈ [ja, jb]
-      h : (mpack,) ndarray
-          上三角打包向量（原位累加）
+    Parameters
+    ----------
+    ia, ib, ja, jb : int
+          first block : i ∈ [ia, ib]
+          second block : i ∈ [ja, jb]
+    h : (mpack,) ndarray
+        upper triangle
       sp : (3,3) ndarray
       sd : (5,5) ndarray
       pp : (6,3,3) ndarray
       dp : (15,5,3) ndarray
       d_d : (15,5,5) ndarray
       cored : (10,2) ndarray
-          行 0..9 ↔ Fortran 1..10；列 0 ↔ 第1原子，列 1 ↔ 第2原子
       indpp : (3,3) ndarray[int]
       inddp : (5,3) ndarray[int]
       inddd : (5,5) ndarray[int]
 
-    备注：
-      - 这里的 i,j 循环仍按 Fortran 1-basis 运行，仅在取数组时转成 0-basis。
-      - h 的打包下标 m(1-based) = i(i-1)/2 + j；Python 访问时用 m-1。
     """
     indpp = env.indpp
     inddp = env.inddp
@@ -1830,34 +1756,33 @@ def elenuc(
     inddd = np.asarray(inddd, dtype=int)
 
     def add_block(k1b, l1b, n_col):
-        """处理一个原子块（n_col=0 or 1 对应 cored 的第 1/2 列）"""
-        # k1b..l1b 为 1-basis；ind1/ind2 是相对索引（与 Fortran 的 ind1/ind2 含义一致）
+        """ add block of electron-nucli interaction energy """
+        # k1b..l1b 为 1-basis；ind1/ind2 
         for i in range(k1b, l1b + 1):
-            ind1 = i - k1b  # 0,1,2,...  (相对该原子块)
+            ind1 = i - k1b  # 0,1,2,...  
             for j in range(k1b, i + 1):
                 ind2 = j - k1b
-                m_1b = (i * (i - 1)) // 2 + j      # Fortran 打包位置 (1-basis)
+                m_1b = (i * (i - 1)) // 2 + j      # Fortran-like (1-basis)
                 m = m_1b - 1                       # Python 0-basis
 
                 if ind1 == 0:
-                    # 只有 j==k1b（即 ind2==0）会进入；与 Fortran 等价
+                    # j==k1b（ind2==0） case
                     if ind2 == 0:
                         # -- (SS/)
                         h[m] += cored[0, n_col]
                     else:
-                        # 逻辑上到不了；保留占位以与 Fortran 分支对应
                         if ind2 < 4:
-                            ipp = int(indpp[ind1 - 1, ind2 - 1])  # 不会触发
+                            ipp = int(indpp[ind1 - 1, ind2 - 1])  
                             h[m] += ( cored[2, n_col] * pp[ipp, 0, 0]
                                      + cored[3, n_col] * (pp[ipp, 1, 1] + pp[ipp, 2, 2]) )
                         else:
-                            idd = int(inddd[ind1 - 4, ind2 - 4])  # 不会触发
+                            idd = int(inddd[ind1 - 4, ind2 - 4])  
                             h[m] += ( cored[6, n_col] * d_d[idd, 0, 0]
                                      + cored[8, n_col] * (d_d[idd, 1, 1] + d_d[idd, 2, 2])
                                      + cored[9, n_col] * (d_d[idd, 3, 3] + d_d[idd, 4, 4]) )
                 else:
                     if ind1 < 4:
-                        # ---- P 行（相对索引 1..3）
+                        # ---- P column
                         if ind2 == 0:
                             # -- (SP/)
                             h[m] += sp[0, ind1 - 1] * cored[1, n_col]
@@ -1867,13 +1792,13 @@ def elenuc(
                             h[m] += ( cored[2, n_col] * pp[ipp, 0, 0]
                                      + cored[3, n_col] * (pp[ipp, 1, 1] + pp[ipp, 2, 2]) )
                         else:
-                            # -- (P 与 D)：原 Fortran 用 d_d（此分支在循环几何上通常到不了，保留）
+                            # -- (P and D)
                             idd = int(inddd[ind1 - 4, ind2 - 4])
                             h[m] += ( cored[6, n_col] * d_d[idd, 0, 0]
                                      + cored[8, n_col] * (d_d[idd, 1, 1] + d_d[idd, 2, 2])
                                      + cored[9, n_col] * (d_d[idd, 3, 3] + d_d[idd, 4, 4]) )
                     else:
-                        # ---- D 行（相对索引 4..8）
+                        # ---- D column
                         if ind2 == 0:
                             # -- (SD/)
                             h[m] += sd[0, ind1 - 4] * cored[4, n_col]
@@ -1889,32 +1814,32 @@ def elenuc(
                                      + cored[8, n_col] * (d_d[idd, 1, 1] + d_d[idd, 2, 2])
                                      + cored[9, n_col] * (d_d[idd, 3, 3] + d_d[idd, 4, 4]) )
 
-    # 第 1 个原子块（Fortran: n=1）
     add_block(ia, ib, n_col=0)
-    # 第 2 个原子块（Fortran: n=2）
     add_block(ja, jb, n_col=1)
                             
 def rotatd(ni, nj, ci, cj, w, kr, env=None):
     """
-    NumPy 版 rotatd（严格 0-basis；不依赖全局占位数组）。
-    返回：
-      w（传入数组将被原位写入/修改）, enuc（核-核斥能，eV 标度）
+    NumPy  rotatd
+    Return:
+        w (the input array will be written/modified in place)
+        enuc (nucleus-nucleus repulsion energy, in eV scale)
     """
+    ### transforme atomic number into 0-based 
     ni = ni - 1
     nj = nj - 1 
-    ### 原子序数转换为 0-based
+    
     tore = env.tore
     natorb = env.natorb
     indx = env.indx
     indexd = env.indexd
     inddd = env.inddd
-    # --- 1) 旋转块与距离（与坐标同单位；此处记为 Å） ---
+    # --- 1) rotate matrix  ---
     r_ang, sp, pp, sd, dp, d_d = rotmat(nj, ni, ci, cj, env=env)
 
-    # --- 2) 两中心局域积分（22 项）与 G_AB（用于核-核项） ---
+    # --- 2) 2 center local integrals（22 terms）and G_AB（used in core-core） ---
     ri, gab = reppd(ni, nj, r_ang, env=env)  # 已内部用 a0 归一 , 确定与fortran对齐
-    # print('ri', (ri-ri_fortran)<)
-    # --- 3) r 转 Bohr，核-电子 core(s/p) ---
+
+    # --- 3) unit transformation: r Bohr ---
     r_bohr = r_ang / a0
     cored = spcore(ni, nj, r_bohr, env=env)                 # (10,2) 确定与fortran对齐
 
@@ -1922,50 +1847,46 @@ def rotatd(ni, nj, ci, cj, w, kr, env=None):
     one_mc = 1.0 - c
 
     # --- 5) 加入 d 相关两中心 & rep(491) ---
-    rep, core_d = reppd2(ni, nj, r_bohr, ri, env=env)       # core_d 仅 5..10 有值
-    # print(np.where(np.abs(rep-rep_fortran)>1e-5)) # 前 34 个元素确定相同
-    # 合并 core：1..4 保留 spcore，5..10 取 reppd2 结果
+    rep, core_d = reppd2(ni, nj, r_bohr, ri, env=env)       # core_d 
     cored = np.array(cored, dtype=float, copy=True)
     if core_d is not None:
         cored[4:, :] = core_d[4:, :]
 
-    # --- 6) feather：对 core 的平滑（与 Fortran 完全一致） ---
-    # 右核（列 0）：point = -(eV/r)*tore(nj)
+    # --- 6) feather：smoothen the core  ---
+    # right（column 0）：point = -(eV/r)*tore(nj)
     point = -(Ha2eV / r_bohr) * tore[nj]
     idx_add = [0, 2, 3, 6, 8, 9]   # 1,3,4,7,9,10 -> 0-based
     idx_mul = [1, 4, 5, 7]         # 2,5,6,8
     cored[idx_add, 0] = cored[idx_add, 0] * c + one_mc * point
     cored[idx_mul, 0] = cored[idx_mul, 0] * c
     
-    # 左核（列 1）：point = -(eV/r)*tore(ni)
+    # left（column 1）：point = -(eV/r)*tore(ni)
     point = -(Ha2eV / r_bohr) * tore[ni]
     cored[idx_add, 1] = cored[idx_add, 1] * c + one_mc * point
     cored[idx_mul, 1] = cored[idx_mul, 1] * c
-    # print('cored', cored-cored_fortran) #  与Fortran对上
 
-    # --- 7) 组装 AO-对 积分向量 ww（长度最大 2025=45*45） ---
+
+    # --- 7) assemble AO-pair ww（Max length 2025=45*45） ---
     ii = int(natorb[ni])  # 1 / 4 / 9
     kk = int(natorb[nj])  # 1 / 4 / 9
-    ww = np.zeros(2025, dtype=float)   # 数组
+    ww = np.zeros(2025, dtype=float)   # temporary ww 
     if ii * kk > 0:
         limij = ii * (ii + 1) // 2
         limkl = kk * (kk + 1) // 2   # 45 
-        ww = ww[:limij*limkl]   # 数组切片，限制 ww 长度，适应不含d轨道物种
-        # 由 rep + 旋转块生成 v, logv（45×45）
+        ww = ww[:limij*limkl]  
 
         v, logv = tx(ii, kk, rep, sp, pp, sd, dp, d_d, env=env)  # bool(45,45), float(45,45)
         
-        # 元素类型映射：met(1..45) -> {1..6}
         met = np.array([
             1,2,3,2,3,3,2,3,3,3, 4,5,5,5,6, 4,5,5,5,6,6, 4,5,5,5,6,6,6,
             4,5,5,5,6,6,6,6, 4,5,5,5, 6,6,6,6,6
-        ], dtype=int)  # 45 项，0-basis 存取
+        ], dtype=int)  # 45 terms
 
-        # 便捷：Fortran indw(i,j) (1-based) -> Python 0-based
+        # Fortran indw(i,j) (1-based) -> Python 0-based
         def indw_1b(i1b, j1b, kl0b):
             return int(indx[i1b - 1, j1b - 1]) * limkl + kl0b  # 0-based
 
-        # 主循环（完全按 Fortran 的 1..N 书写，内部做 -1 偏移）
+        # Main loop
         for i1 in range(1, ii + 1):
             for j1 in range(1, i1 + 1):
                 ij = int(indexd[i1 - 1, j1 - 1])         # 0..44
@@ -2025,94 +1946,66 @@ def rotatd(ni, nj, ci, cj, w, kr, env=None):
                                     cc = d_d[ij1_py, i1 - 5, j1 - 5]
                                     iw = indw_1b(i + 4, j + 4, kl)
                                     ww[iw] += cc * wrepp
-    # --- 9) 把 ww 写入稀疏块矩阵 w（与 Fortran 相同接口） ---
+    # --- 9) add local ww to global w ---
     iw = (ii * (ii + 1))/ 2
     jw = (kk * (kk + 1))// 2
 
-    # print('before w2mat',kr)
     kr = w2mat(ww, w, kr, iw, jw)
-    # print('after w2mat',kr)
-    # print_fortran_style(ww_fortran-ww)
-    # print(np.where(np.abs(ww-ww_fortran)>1e-5)) 
-    # --- 10) 其他与原例程一致的调用（保持接口） ---
-    # 累加量（未进一步使用，按原样保留）
-    #_sum = 0.0
-    #for i in range(1, 10):
-    #    ii_base = 45 * (((i * (i + 1)) // 2) - 1)
-    #    for j in range(1, 10):
-    #        jj_off = (j * (j + 1)) // 2
-    #        _sum += ww[ii_base + jj_off - 1]
-
-    # elenuc（按原接口；en 未被下游直接用，仅为接口一致）
-    # en = np.zeros(171, dtype=float)
-    # li = int(natorb[ni])
-    # lj = int(natorb[nj])
-    # elenuc(1, li, li + 1, li + lj, en, sp, sd, pp, dp, d_d, cored, env=env)  # 更新与en
-
-    # 核-核斥能（Bohr 距离；沿用 reppd 的 gab）
-    enuc = ccrep_pm6(ni, nj, r_bohr, gab, env=env)   # 689.4545 reference 689.30403
+    enuc = ccrep_pm6(ni, nj, r_bohr, gab, env=env)   
 
     return kr, float(enuc), sp, sd, pp, dp, d_d, cored
 
 def rotate_np(ni, nj, xi, xj, w_buf, kr, env=None):
     """
-    NumPy 等价版 rotate（0-based）。
+    NumPy rotate（0-based）。
 
     Parameters
     ----------
     ni, nj : int
-        原子序数
+        1_based atomic number
     xi, xj : array_like shape (3,)
-        两原子的笛卡尔坐标（Å）
+        cartesian coordinates of atom i and j (Å)
     w_buf : np.ndarray (1D)
-        两电子缓冲区（与 Fortran W 相同的一维大缓冲）
-        这里会从偏移 kr 开始由 rotatd_fn 追加写入（列主序）
+        global w buffer (1D)
     kr : int
-        当前位置写指针（元素个数偏移）
+        current position of w_buf to write
 
     Keyword-only
     ------------
     env : object
-        需要提供：
-          - natorb : (nZ,) 每个元素的 AO 数（1/4/9）
-          - method_pm7 : bool
-          - id : int（=3 时表示固体/晶体）
-          - 以及 elenuc_fn 会用到的张量（sp/sd/pp/dp/d_d，以及
-            当前两原子对由 rotatd 写入的 env.cored(10,2)）
+        Must provide:
+        - natorb : (nZ,)  Number of AOs for each element (1/4/9)
+        - And the tensors used by elenuc_fn (sp/sd/pp/dp/d_d, as well as
+            env.cored(10,2) for the current atom pair, which is written by rotatd)
+
     rotatd_fn : callable
         rotatd_fn(ni, nj, xi, xj, w_buf, kr, env) -> (kr_new, enuc)
-        负责计算局域→分子框架后的两电子积分，并把 45×45=2025 项
-        以列主序写入 w_buf[kr:kr+2025]，返回新的 kr 和 enuc(eV)。
+        Responsible for computing two-electron integrals after transforming from the
+        local frame to the molecular frame, and writing the 45×45 = 2025 terms in
+        column-major order to w_buf[kr : kr + 2025]. Returns the new kr and enuc (eV).
+
     elenuc_fn : callable
         elenuc_fn(ia, ib, ja, jb, h_packed, env=env) -> None
-        把当前对的核稳定项累加到打包向量 h_packed（长度足以容纳
-        (li+lj)*(li+lj+1)/2，最大 171）。
-        需要 env.cored 由 rotatd_fn 事先写好。
-    nddo_to_point_fn : Optional[callable]
-        在固体中随距离把 NDDO 渐变为点电荷：
-        nddo_to_point_fn(w_block, e1b, e2a, enuc, rij, ni, nj, env) -> (w_block, e1b, e2a, enuc)
+        Accumulates the nuclear stabilization terms for the current pair into the
+        packed vector h_packed (length sufficient to hold (li+lj)*(li+lj+1)/2, up to 171).
+        Requires env.cored to have been written in advance by rotatd_fn.
 
     Returns
     -------
     kr_new : int
     e1b : (li*(li+1)//2,) ndarray
-        电子在原子 i 上、吸引原子 j 核 的一电子打包块
     e2a : (lj*(lj+1)//2,) ndarray
-        电子在原子 j 上、吸引原子 i 核 的一电子打包块
     enuc : float
-        核-核排斥（eV）
     """
 
     xi = np.asarray(xi, float)
     xj = np.asarray(xj, float)
 
-    # 距离判定
     dx = xj - xi
-    # dx = xi - xj
-    rij2 = float(np.dot(dx, dx))
-    if rij2 < 2.0e-5:  # Fortran: 0.00002D0
-        # 小距离极限：全部置零并不推进 kr（与 Fortran 一致）
-        # Fortran 在小距下把局部 w(2025)=0；这里同样清空 2025 槽位（若有空间）
+    rij2 = np.dot(dx, dx)
+    if rij2 < 2.0e-5:  
+        # lower limit of the atomic distance: set all w to 0 and do not advance kr (consistent with Fortran)
+        # Fortran sets w(2025) = 0 when rij < 2.0e-5; here we clear the 2025 slot (if any)
         if w_buf is not None and w_buf.ndim == 1 and w_buf.size >= kr + 2025:
             w_buf[kr:kr+2025] = 0.0
         li = int(env.natorb[ni])
@@ -2122,23 +2015,20 @@ def rotate_np(ni, nj, xi, xj, w_buf, kr, env=None):
         enuc = 0.0
         return kr, e1b, e2a, enuc
 
-    # 1) 两电子项（及 cored）由 rotatd 生成
-    # print('mnodod coord')
-    # print(xi, xj)
+    # 1) 2-electron term generated by rotatd function
     kr_new, enuc, sp, sd, pp, dp, d_d, cored = rotatd(ni, nj, xi, xj, w_buf, kr, env=env)
-    # 2) 一电子核吸引块（打包）由 elenuc 生成
-    li = int(env.natorb[ni-1])
-    lj = int(env.natorb[nj-1])
+    # 2) 1-electron core attraction term generated by elenuc
+    li = env.natorb[ni-1]
+    lj = env.natorb[nj-1]
 
-    # 组合块的打包向量最大长度：当 li=lj=9 时为 171
+    # Maximum length, considering li=lj=9 
     h_pack = np.zeros(171, dtype=float) # np.zeros((li + lj) * (li + lj + 1) // 2, dtype=float)
 
-    # elenuc 的区间是 1-basis 语义，这里传原式：
-    #   第 1 原子块: 1..li
-    #   第 2 原子块: li+1 .. li+lj
+    #   first block : 1..li
+    #   second block : li+1 .. li+lj
     elenuc(1, li, li + 1, li + lj, h_pack, sp, sd, pp, dp, d_d, cored, env=env)
-    # 3) 拆出 e1b/e2a（与 Fortran 索引一致）
-    # e1b: 子块(1..li, 1..li) 的打包
+    # 3) extract e1b/e2a from h_pack
+    # e1b
     e1b = np.empty(li*(li+1)//2, dtype=float)
     t = 0
     for i in range(1, li+1):
@@ -2147,37 +2037,14 @@ def rotate_np(ni, nj, xi, xj, w_buf, kr, env=None):
         e1b[t:t+cnt] = h_pack[base:base+cnt]
         t += cnt
 
-    # e2a: 子块(li+1..li+lj, li+1..li+lj) 的打包
+    # e2a: sub-block (li+1..li+lj, li+1..li+lj) of h_pack
     e2a = np.empty(lj*(lj+1)//2, dtype=float)
     t = 0
     for i in range(li+1, li+lj+1):
         base = i*(i-1)//2
-        # 该行在第二块中的列范围是 (li+1..i) 共 (i-li) 个
         cnt = i - li
         e2a[t:t+cnt] = h_pack[base + (li): base + (li) + cnt]
         t += cnt
 
     return kr_new, e1b, e2a, enuc
 
-def _pack_index(i: int, j: int) -> int:
-    """下三角打包索引（0-basis）。要求 j<=i。"""
-    if j > i:
-        i, j = j, i
-    return i * (i + 1) // 2 + j
-
-def _add_packed_block(h, ia, ib, eblk, scale=1.0):
-    """
-    将打包的下三角块 eblk（长度 (L*(L+1))//2, L=ib-ia+1）加到 h 的大打包矩阵中。
-    把 eblk 的第 r 行（局部）加到全局行 p=ia+r 的列区间 [ia, ia+r]。
-    """
-    L = ib - ia + 1
-    if L <= 0:
-        return
-    off = 0
-    for p in range(ia, ib + 1):
-        n = p - ia + 1
-        row_vals = eblk[off:off + n]
-        # 写到全局 h 的 (p, ia..p)
-        base = _pack_index(p, ia)
-        h[base: base + n] += scale * row_vals
-        off += n

@@ -23,23 +23,20 @@ fact = np.array([
     2.092278989e13,    # 16!
     3.556874281e14     # 17!
 ], dtype=np.float64)
-# ------------------------------
-# ss: 通用三重积分（完全翻译）
-# 依赖 bfn 
-# ------------------------------
+
 def ss_np(
     na:int, nb:int, la1:int, lb1:int, m1:int,
     ua:float, ub:float, r1:float, a0:float,
 ) -> float:
     """
-    Fortran 'ss' 的等价实现。
+    Fortran 'ss' 
     """
     m  = m1  - 1
     lb = lb1 - 1
     la = la1 - 1
     r = r1 / a0
 
-    # binomial 系数表 bi(i,j): i,j=0..12
+    # binomial coefficient table bi(i,j): i,j=0..12
     bi = np.zeros((13,13), dtype=float)
     for i in range(13):
         bi[i,0] = 1.0
@@ -47,7 +44,7 @@ def ss_np(
     for i in range(12):
         bi[i+1,1:i+1] = bi[i,1:i+1] + bi[i,0:i]
 
-    # aff(la,m,i) 表（只用到 la<=2,m<=2,i<=2 的条目）
+    # aff(la,m,i) table
     aff = np.zeros((3,3,3), dtype=float)
     aff[0,0,0] = 1.0
     aff[1,0,0] = 1.0
@@ -55,7 +52,7 @@ def ss_np(
     aff[2,0,0] = 1.5
     aff[2,1,0] = sqrt(1.5)
     aff[2,2,0] = sqrt(0.375)
-    aff[2,0,2] = -0.5  # 对应手册里的 C(2,0,1)
+    aff[2,0,2] = -0.5  
 
     # af(n)
     p = (ua + ub)*r*0.5
@@ -103,8 +100,8 @@ def ss_np(
     return float(val)
 
 # ------------------------------
-# diat2: 主族小原子的快速路径
-# 依赖 set 提供 {sa,sb,a[],b[], isp,ips}
+# diat2: main-group atom
+# set {sa,sb,a[],b[], isp,ips}
 # ------------------------------
 def diat2_np(
     na: int, esa: float, epa: float,
@@ -113,13 +110,12 @@ def diat2_np(
     a0: float,
 ) -> np.ndarray:
     """
-    返回 s(3,3,3)；其三个第三维分别对应 (sigma,pi,delta) 的组合（Fortran s(:,:,1/2/3)）。
+    return s(3,3,3): (sigma,pi,delta)
     """
-    # 形状与默认值
     s = np.zeros((3, 3, 3), dtype=float)
     rab = r12 / a0
 
-    # Fortran 的 inmb / iii 表
+    # Fortran  inmb / iii 
     inmb = np.array([1, 0, 2, 2, 3, 4, 5, 6, 7, 0, 8, 8, 8, 9, 10, 11, 12], dtype=int)
     iii  = np.array([
         1,2,4, 2,4,4, 2,4,4,4, 2,4,4,4,4, 2,4,4,4,4,4, 2,4,4,4,4,4,4,
@@ -133,19 +129,16 @@ def diat2_np(
     jmin = min(inmb[na], inmb[nb])
     nbond = (jmax*(jmax - 1))//2 + jmin
     ii = int(iii[nbond-1]) if nbond-1 < len(iii) and nbond-1 >= 0 else 1
-    # 工具：调用 set_np，并把返回内容拆出来
+
     def call_set(ua, ub):
         sa, sb, avec, bvec, isp, ips = set_np(ua, ub, na, nb, rab, ii)
-        # 转成 NumPy
-        a = np.asarray(avec, dtype=float)  # Fortran 是 1-based，下文已照写同样的下标（注意使用时）
+        a = np.asarray(avec, dtype=float) 
         b = np.asarray(bvec, dtype=float)
         return sa, sb, a, b, int(isp), int(ips)
 
-    # 各 case 的表达式 —— 完全逐句翻译自 Fortran
     if ii not in (2,3,4,5,6):   # default == 1
         sa, sb, a, b, isp, ips = call_set(esa, esb)
         w = 0.25*sqrt((sa*sb*rab*rab)**3)
-        # a(3)*b(1)-b(3)*a(1)  —— 注意 Fortran 下标从 1 起，这里用 0-based 取 a[2] 等
         s[0,0,0] = w*(a[2]*b[0] - b[2]*a[0])
         return s
 
@@ -160,7 +153,6 @@ def diat2_np(
         if nb > 1:
             sa, sb, a, b, isp, ips = call_set(esa, epb)
         w = sqrt(sa**3 * sb**5) * rab4
-        # s(isp,ips,1)
         s[isp-1, ips-1, 0] = w*(a[2]*b[0]-b[2]*a[0] + a[3]*b[1]-b[3]*a[1])
         return s
 
@@ -184,9 +176,7 @@ def diat2_np(
         w = sqrt((sa*sb)**5) * rab4
         s[0,0,0] = w*(a[4]*b[0] + b[4]*a[0] - 2.0*a[2]*b[2]) / 3.0
 
-        # s(isp,ips,1)
         sa, sb, a, b, isp, ips = call_set(esa, epb)
-        # Fortran: if (na > nb) call set(epa, esb, ...)
         if na > nb:
             sa, sb, a, b, isp, ips = call_set(epa, esb)
         w = sqrt((sa*sb)**5) * rab4
@@ -195,7 +185,6 @@ def diat2_np(
         e = b[3]*(a[0]-a[2]) - b[1]*(a[2]-a[4])
         s[isp-1, ips-1, 0] = w*rt3*(d + e)
 
-        # s(ips,isp,1)
         sa, sb, a, b, isp, ips = call_set(epa, esb)
         if na > nb:
             sa, sb, a, b, isp, ips = call_set(esa, epb)
@@ -204,7 +193,7 @@ def diat2_np(
         e = b[3]*(a[0]-a[2]) - b[1]*(a[2]-a[4])
         s[ips-1, isp-1, 0] = w*rt3*(d - e)
 
-        # s(2,2,1) & s(2,2,2)  (2==p通道)
+        # s(2,2,1) & s(2,2,2)  (2==p)
         sa, sb, a, b, isp, ips = call_set(epa, epb)
         w = sqrt((sa*sb)**5) * rab4
         s[1,1,0] = -w*( b[2]*(a[4]+a[0]) - a[2]*(b[4]+b[0]) )
@@ -272,25 +261,20 @@ def diat2_np(
 
 def coe_np(x2: float, y2: float, z2: float, norbi: int, norbj: int):
     """
-    NumPy 版本的 coe。
-    参数
+    NumPy  coe
     ----
     x2, y2, z2 : float
-        原子 j 在 i 的局部坐标中的位移分量（与 Fortran 相同）。
     norbi, norbj : int
-        原子 i / j 的 AO 个数（用于决定是否填充 p / d 项）。
-    返回
+         AO number of atom i / j
+    return
     ----
     r : float
-        两原子距离
     c : ndarray, shape (3, 5, 5)
-        系数张量。等价于 Fortran 的 c(3,5,5)；Fortran 代码里通过线性索引 c(1..75) 赋值。
     """
 
     rt34 = 0.86602540378444  # sqrt(3)/2
     rt13 = 0.57735026918963  # 1/sqrt(3)
 
-    # 距离与方向余弦
     xy2 = x2*x2 + y2*y2
     r = np.sqrt(xy2 + z2*z2)
     xy = np.sqrt(xy2)
@@ -308,11 +292,8 @@ def coe_np(x2: float, y2: float, z2: float, norbi: int, norbj: int):
         else:  # z2 > 0
             ca = 1.0; cb = 1.0; sa = 0.0; sb = 0.0
 
-    # 目标张量（等价 Fortran c(3,5,5)）
     c = np.zeros((3, 5, 5), dtype=float)
 
-    # —— 辅助：把 Fortran 线性索引 c(n) (1-based) 映射到 c[i,j,k] (0-based, C-order 显式实现 Fortran 的列主序) ——
-    # Fortran 线性索引公式（列主序）: n = 1 + (i-1) + 3*(j-1) + 3*5*(k-1)
     def setc(n1based: int, val: float):
         n0 = n1based - 1
         k = n0 // (3*5)
@@ -321,10 +302,8 @@ def coe_np(x2: float, y2: float, z2: float, norbi: int, norbj: int):
         i = rem % 3
         c[i, j, k] = val
 
-    # 与 Fortran 完全相同的赋值序列
     nij = max(int(norbi), int(norbj))
 
-    # c(37) = 1.d0
     setc(37, 1.0)
 
     if nij >= 2:
@@ -374,22 +353,21 @@ def coe_np(x2: float, y2: float, z2: float, norbi: int, norbj: int):
 
     return c
 # ------------------------------
-# diat: 主入口
+# diat: entrance
 # ------------------------------
 def diat_np(
     ni: int,
     nj: int,
-    xj: np.ndarray,                 # R_j - R_i 的向量 (3,)
+    xj: np.ndarray,                 # R_j - R_i  (3,)
     a0=0.529177210903,
-    cutof1=10**2,                  # 距离平方截断
-    natorb=None,             # 元素 -> 该原子AO数 (1/4/9)
+    cutof1=10**2,                  # squared distance cutoff
+    natorb=None,            
     zs=None, zp=None, zd=None,
-    npq=None,                # 形如 (107,3) 或更大：各元素的 n_pq（对应 s,p,d 列）
+    npq=None,                
 ) -> np.ndarray:
     """
-    返回 9x9 的二原子重叠 'di'（未裁剪，后续调用者可按 natorb 裁剪到 (n_i_orb,n_j_orb)）。
+    return 9x9 'di'
     """
-    # ==== 常量、表 ====
     # Fortran: ival(3,5) column-major:
     # data ival/ 1,0,9, 1,3,8, 1,4,7, 1,2,6, 0,0,5/
     # i=1..3 (s,p,d), k=1..5 (m = -δ,-π,σ,π,δ) -> AO 索引(1..9)
@@ -399,45 +377,34 @@ def diat_np(
         [9, 8, 7, 6, 5],  # i=3 (d)
     ], dtype=int)
 
-    # ---- 初始化 ----
     di = np.zeros((9, 9), dtype=float)
 
     x2, y2, z2 = float(xj[0]), float(xj[1]), float(xj[2])
     r2 = x2*x2 + y2*y2 + z2*z2
 
-    # 取 s-主量子数; Fortran: pq1=npq(ni,1), pq2=npq(nj,1)（1-based列 -> s列）
     pq1 = int(npq[ni, 0])
     pq2 = int(npq[nj, 0])
 
-    # 快速返回：零AO或超截断或太近
     if pq1 == 0 or pq2 == 0 or r2 >= cutof1: 
         return di
     if natorb[ni] == 0 or natorb[nj] == 0:
         return di
 
-    # 系数 c(3,5,5) 和 “本征重叠分量” s(3,3,3) 的容器
-    # s[:,:,0/1/2] 对应 Fortran 中的 s1/s2/s3
     c = np.zeros((3, 5, 5), dtype=float)
     s = np.zeros((3, 3, 3), dtype=float)
 
-    # 系数矩阵 c <- coe(...)
     c[:] = np.asarray(coe_np(x2, y2, z2, int(natorb[ni]), int(natorb[nj])), dtype=float)
 
-    # 原代码：r<0.001D0 直接返回（保持 0 矩阵）
     if r2 < 1.0e-6:
         return di
 
-    # 计算是否使用 diat2 快速路径（与 Fortran 一致）
-    # 原 Fortran：use_diat2(i) 对 1..17 的元素，natorb(i)<5 为 True；但 2 和 10 为 False。
-    # 若你使用 0-based 元素编号且数组长度==107，下面逻辑能工作；否则请自行调节。
     def use_diat2_flag(Z):
         if Z < 17:
-            flag = (natorb[Z] < 5) and (Z not in (1, 9))  # 注意：这里的 2 和 10 是“元素号”维度；如你做了 0 基，请对应调整
+            flag = (natorb[Z] < 5) and (Z not in (1, 9))  
             return flag
         return False
     
-    # ---- s 的生成：diat2 或 通用 ss 积分 ----
-    if use_diat2_flag(ni) and use_diat2_flag(nj):   # 只对 1..17 元素有效
+    if use_diat2_flag(ni) and use_diat2_flag(nj):   # 1..17 element
         s[:] = diat2_np(na=ni, esa=zs[ni], epa=zp[ni],
                         r12=sqrt(r2), nb=nj, esb=zs[nj], epb=zp[nj],
                         a0=a0)
@@ -446,14 +413,13 @@ def diat_np(
         ul2 = np.array([zs[nj], zp[nj], max(zd[nj], 0.3)], dtype=float)
 
         # i=1..ia, j=1..ib, k<=min(i,j)
-        ia = min(int(npq[ni, 0]) + 1, 3)   # s-列 +1, capped by 3 (s/p/d)
+        ia = min(int(npq[ni, 0]) + 1, 3)   # s-column +1, capped by 3 (s/p/d)
         ib = min(int(npq[nj, 0]) + 1, 3)
-        newk = min(ia-1, ib-1)             # 0-based内部计数
         for i in range(ia):                # 0..ia-1  -> Fortran i=1..ia
-            pq1_i = int(npq[ni, i])        # npq(ni,i)（列：s/p/d）
+            pq1_i = int(npq[ni, i])        # npq(ni,i)（column：s/p/d）
             for j in range(ib):            # 0..ib-1
                 pq2_j = int(npq[nj, j])
-                nk1 = min(i, j) + 1        # Fortran 的 1..min(i,j)
+                nk1 = min(i, j) + 1        # Fortran  1..min(i,j)
                 for k in range(nk1):       # k=0..nk1-1 -> Fortran kss=k+1
                     pi = max(pq1_i, i+1)   # Fortran: pi=max(pq1,iss)；iss=i
                     pj = max(pq2_j, j+1)
@@ -463,7 +429,6 @@ def diat_np(
                         r1=sqrt(r2), a0=a0
                     )
 
-    # ---- 把 s & c 合成 di ----
     # s1/s2/s3
     s1, s2, s3 = s[:, :, 0], s[:, :, 1], s[:, :, 2]
     # c1..c5
@@ -473,7 +438,7 @@ def diat_np(
     ib = min(int(npq[nj, 0]) + 1, 3)
 
     for i in range(ia):               # i: 0(s),1(p),2(d)
-        kmin, kmax = 3 - (i+1), 1 + (i+1)   # Fortran: k = 4-i .. 2+i  (1-based)，对应 0-based: 3-i .. 1+i
+        kmin, kmax = 3 - (i+1), 1 + (i+1)   # Fortran: k = 4-i .. 2+i  (1-based) 0-based: 3-i .. 1+i
         for j in range(ib):           # j: 0(s),1(p),2(d)
             aa = -1.0 if (j == 1) else 1.0
             bb = -1.0 if (j == 2) else (1.0 if (j != 1) else 1.0)
@@ -481,11 +446,11 @@ def diat_np(
 
             for k in range(kmin, kmax+1):
                 for l in range(lmin, lmax+1):
-                    ii = ival[i, k]   # AO 索引 (1..9 或 0)
+                    ii = ival[i, k]   # AO index (1..9 或 0)
                     jj = ival[j, l]
                     if ii == 0 or jj == 0:
                         continue
-                    # 转 0-based
+                    # 0-based
                     ii0 = ii - 1
                     jj0 = jj - 1
                     di[ii0, jj0] = (
@@ -502,63 +467,50 @@ def h1elec_np(
     nj: int,
     xi: np.ndarray,
     xj: np.ndarray,
-    env = None,         # 初始化环境参数, 需要包含 natorb, betas, betap, betad, cutofs zs6 zp6 zd6 npq等
-    # natorb=None,
-    # betas=None,
-    # betap=None,        # 元素 -> β_p
-    # betad=None,        # 元素 -> β_d
-    # cutofs=7.0**2,            # 距离平方截断（与 Fortran 相同语义）
-    dummy_code = 101    # Fortran 的“dummy”元素号。如果你整体改 0-basis，这里改为 101
+    env = None,         # initialized environment, natorb, betas, betap, betad, cutofs zs6 zp6 zd6 npq
+    dummy_code = 101    
 ) -> np.ndarray:
     """
-    NumPy 版本的一电子两中心块 H(ni,nj)。
-
-    参数
+    NumPy 2-center 1-electron integral H(ni,nj)。
+    parameter
     ----
     ni, nj : int
-        两个原子的“元素/类型索引”。若你用 0-basis 原子号，请确保与
-        natorb/betas/betap/betad 的索引一致。
+        atomic number
     xi, xj : (3,) array
-        两个原子的笛卡尔坐标（单位与上游一致，常见为 Å）。
+        cartesian coordinates of atom i and j
     natorb, betas, betap, betad : ndarray
-        与 Fortran 模块 parameters_C 中同义的参数数组（按元素索引取值）。
-    cutofs : float
-        距离平方截断阈值；Fortran 中与 rab(=|xi-xj|^2) 比较的是同一量纲。
+    cutofs : float   
+        MOPAC default: 15 angs.  
     dummy_code : int
-        “假原子”代码。Fortran 用 102；若你把原子号统一减 1，请改为 101。
 
-    返回
+    return
     ----
     smat : (n_i_orb, n_j_orb) ndarray
-        一电子矩阵块。
     """
     xi = np.asarray(xi, dtype=float).ravel()
     xj = np.asarray(xj, dtype=float).ravel()
 
-    # 元素索引转化为0-basis
     ni = ni - 1
     nj = nj - 1
-    # 距离平方
+
     rab = float(np.dot(xi - xj, xi - xj))
-    # 截断：与 Fortran 保持一致（rab 是平方距离）
+
     if (rab > env.cutofs) or (rab > 3.24 and (ni == dummy_code or nj == dummy_code)):
         ni_orb = int(env.natorb[ni])
         nj_orb = int(env.natorb[nj])
         return np.zeros((ni_orb, nj_orb), dtype=float)
 
-    # 方向向量 j 相对 i
     # xjuc = xi - xj
     xjuc = xj - xi
 
-    # diat：方向相关的无量纲基矩阵（Fortran: call diat(ni,nj,xjuc,smat)）
+    # （Fortran: call diat(ni,nj,xjuc,smat)）
     base = np.asarray(diat_np(ni, nj, xjuc, cutof1=env.cutofs, natorb=env.natorb, zs=env.zs6, zp=env.zp6, zd=env.zd6, npq=env.npq), dtype=float)
-    # base 可能是 9x9；只取到实际 AO 维度
+
     ni_orb = int(env.natorb[ni])
     nj_orb = int(env.natorb[nj])
-    smat = base[:ni_orb, :nj_orb].copy()
+    smat = base[:ni_orb, :nj_orb].copy()  # cut; Note: maybe it's more efficient to produce the final result directly
 
-    # 构造 β/2（按 AO 排列：s, px, py, pz, d1..d5）
-    # bi/bj 都长度 9，随后再切片到实际 AO 数
+    # β/2（s, px, py, pz, d1..d5）
     bi = np.empty(9, dtype=float)
     bj = np.empty(9, dtype=float)
 
@@ -571,7 +523,6 @@ def h1elec_np(
     bj[4:9] = 0.5 * env.betad6[nj]
 
     # Fortran: do j=1,norbj; smat(:norbi,j) *= (bi(:norbi) + bj(j))
-    # 向量化：对列广播
     smat *= (bi[:ni_orb, None] + bj[:nj_orb][None, :])
 
     return smat
